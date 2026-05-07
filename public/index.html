@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LC Prompt Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+
+    <!-- ── SIDEBAR ──────────────────────────────────────────────── -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-name">LC Prompt Studio</div>
+        <div class="brand-tag">v1.0 · Leancrest</div>
+      </div>
+
+      <nav class="stage-nav">
+        <div class="stage-nav-item" data-stage="1" id="nav-1">
+          <span class="nav-num">01</span>
+          <span class="nav-label">Input</span>
+          <span class="nav-status" id="nav-status-1"></span>
+        </div>
+        <div class="stage-nav-item" data-stage="2" id="nav-2">
+          <span class="nav-num">02</span>
+          <span class="nav-label">Analysis</span>
+          <span class="nav-status" id="nav-status-2"></span>
+        </div>
+        <div class="stage-nav-item" data-stage="3" id="nav-3">
+          <span class="nav-num">03</span>
+          <span class="nav-label">Clarify</span>
+          <span class="nav-status" id="nav-status-3"></span>
+        </div>
+        <div class="stage-nav-item" data-stage="4" id="nav-4">
+          <span class="nav-num">04</span>
+          <span class="nav-label">Scope</span>
+          <span class="nav-status" id="nav-status-4"></span>
+        </div>
+        <div class="stage-nav-item" data-stage="5" id="nav-5">
+          <span class="nav-num">05</span>
+          <span class="nav-label">Architecture</span>
+          <span class="nav-status" id="nav-status-5"></span>
+        </div>
+        <div class="stage-nav-item" data-stage="6" id="nav-6">
+          <span class="nav-num">06</span>
+          <span class="nav-label">Generate</span>
+          <span class="nav-status" id="nav-status-6"></span>
+        </div>
+        <div class="stage-nav-item" data-stage="7" id="nav-7">
+          <span class="nav-num">07</span>
+          <span class="nav-label">Package</span>
+          <span class="nav-status" id="nav-status-7"></span>
+        </div>
+      </nav>
+
+      <div class="sidebar-tools">
+        <button class="sidebar-tool-btn" id="open-sessions-btn">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Sessions
+          <span class="tool-count" id="sessions-count"></span>
+        </button>
+        <button class="sidebar-tool-btn" id="open-feedback-btn">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 2a6 6 0 100 12A6 6 0 008 2zM8 5v4M8 10.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Feedback Bank
+          <span class="tool-count" id="feedback-count"></span>
+        </button>
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="reset-btn" id="reset-btn">New Session</button>
+      </div>
+    </aside>
+
+    <!-- ── MAIN CONTENT ─────────────────────────────────────────── -->
+    <main class="main">
+
+      <!-- TOP PROGRESS BAR -->
+      <div class="top-progress">
+        <div class="top-progress-track">
+          <div class="top-progress-fill" id="top-progress-fill"></div>
+        </div>
+        <div class="top-progress-steps" id="top-progress-steps">
+          <span class="tps-item" data-stage="1">Input</span>
+          <span class="tps-item" data-stage="2">Analysis</span>
+          <span class="tps-item" data-stage="3">Clarify</span>
+          <span class="tps-item" data-stage="4">Scope</span>
+          <span class="tps-item" data-stage="5">Architecture</span>
+          <span class="tps-item" data-stage="6">Generate</span>
+          <span class="tps-item" data-stage="7">Package</span>
+        </div>
+      </div>
+
+      <!-- STAGE 1: INPUT -->
+      <section class="stage-panel active" id="stage-1">
+        <div class="panel-header">
+          <div class="panel-stage-label">Stage 01</div>
+          <h1 class="panel-title">Input</h1>
+          <p class="panel-subtitle">Paste a transcript, email thread, or project brief. The Studio will extract use cases, constraints, and stakeholders automatically.</p>
+        </div>
+
+        <div class="panel-body">
+          <div class="form-group">
+            <label class="form-label">Input material</label>
+            <textarea
+              id="input-text"
+              class="input-textarea"
+              placeholder="Paste a meeting transcript, voice note, email thread, or text brief here..."
+              rows="16"
+            ></textarea>
+          </div>
+
+          <div class="file-upload-row">
+            <label class="file-upload-label" for="file-upload">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 5l3-3 3 3M2 11v1a2 2 0 002 2h8a2 2 0 002-2v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Upload .txt or .md file
+            </label>
+            <input type="file" id="file-upload" accept=".txt,.md" style="display:none">
+            <span class="file-name" id="file-name"></span>
+          </div>
+
+          <div id="stage1-error" class="error-msg" style="display:none"></div>
+
+          <div class="action-row">
+            <button class="btn-primary" id="analyse-btn">
+              Analyse Input
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STAGE 2: ANALYSIS -->
+      <section class="stage-panel" id="stage-2">
+        <div class="panel-header">
+          <div class="panel-stage-label">Stage 02</div>
+          <h1 class="panel-title">Analysis</h1>
+          <p class="panel-subtitle">Review what the Studio extracted. Correct anything before proceeding.</p>
+        </div>
+
+        <div class="panel-body" id="extraction-display">
+          <!-- populated by JS -->
+        </div>
+
+        <div class="panel-footer">
+          <div id="stage2-error" class="error-msg" style="display:none"></div>
+          <div class="action-row">
+            <button class="btn-secondary" onclick="setStage(1)">Back</button>
+            <button class="btn-primary" id="confirm-extraction-btn">
+              Confirm & Generate Questions
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STAGE 3: CLARIFY -->
+      <section class="stage-panel" id="stage-3">
+        <div class="panel-header">
+          <div class="panel-stage-label">Stage 03</div>
+          <h1 class="panel-title">Clarify</h1>
+          <p class="panel-subtitle">Answer these questions before scoping begins. Answers are locked in before any generation.</p>
+        </div>
+
+        <div class="panel-body">
+          <form id="questions-form">
+            <!-- populated by JS -->
+          </form>
+        </div>
+
+        <div class="panel-footer">
+          <div id="stage3-error" class="error-msg" style="display:none"></div>
+          <div class="action-row">
+            <button class="btn-secondary" onclick="setStage(2)">Back</button>
+            <button class="btn-primary" id="submit-answers-btn">
+              Submit Answers & Generate Scope
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STAGE 4: SCOPE -->
+      <section class="stage-panel" id="stage-4">
+        <div class="panel-header">
+          <div class="panel-stage-label">Stage 04</div>
+          <h1 class="panel-title">Scoping Document</h1>
+          <p class="panel-subtitle">Review the scoping document. Edit if needed. No prompts will be generated without explicit approval.</p>
+        </div>
+
+        <div class="panel-body">
+          <div class="scope-toolbar">
+            <div class="scope-toolbar-left">
+              <button class="tab-btn active" id="tab-preview" onclick="switchScopeTab('preview')">Preview</button>
+              <button class="tab-btn" id="tab-edit" onclick="switchScopeTab('edit')">Edit</button>
+            </div>
+            <div class="scope-toolbar-right">
+              <span class="generating-badge" id="scope-generating-badge">Generating...</span>
+            </div>
+          </div>
+
+          <div id="scope-preview" class="scope-preview markdown-body">
+            <!-- streaming content -->
+          </div>
+          <textarea id="scope-editor" class="scope-editor" style="display:none"></textarea>
+        </div>
+
+        <div class="panel-footer">
+          <div class="gate-warning">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1L1 14h14L8 1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 6v4M8 11.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Scoping document gate — no prompts generated until you approve
+          </div>
+          <div class="action-row">
+            <button class="btn-secondary" onclick="setStage(3)">Back</button>
+            <button class="btn-approve" id="approve-scope-btn" disabled>
+              Approve Scope & Continue
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l4 4 8-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STAGE 5: ARCHITECTURE -->
+      <section class="stage-panel" id="stage-5">
+        <div class="panel-header">
+          <div class="panel-stage-label">Stage 05</div>
+          <h1 class="panel-title">Architecture</h1>
+          <p class="panel-subtitle">Review the recommended prompt architecture before generation begins.</p>
+        </div>
+
+        <div class="panel-body" id="architecture-display">
+          <!-- populated by JS -->
+        </div>
+
+        <div class="panel-footer">
+          <div id="stage5-error" class="error-msg" style="display:none"></div>
+          <div class="action-row">
+            <button class="btn-secondary" onclick="setStage(4)">Back</button>
+            <button class="btn-approve" id="approve-arch-btn">
+              Approve & Begin Generation
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l4 4 8-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STAGE 6: GENERATE -->
+      <section class="stage-panel" id="stage-6">
+        <div class="panel-header">
+          <div class="panel-stage-label">Stage 06</div>
+          <div class="generate-header-row">
+            <h1 class="panel-title" id="generate-title">Generating...</h1>
+            <div class="generate-progress" id="generate-progress"></div>
+          </div>
+          <p class="panel-subtitle" id="generate-subtitle"></p>
+        </div>
+
+        <div class="panel-body">
+          <div class="generate-toolbar" id="generate-toolbar">
+            <span class="filename-badge" id="generate-filename"></span>
+            <span class="char-counter" id="char-counter" style="display:none"></span>
+          </div>
+
+          <div id="prompt-preview" class="scope-preview markdown-body">
+            <!-- streaming content -->
+          </div>
+          <textarea id="prompt-editor" class="scope-editor" style="display:none"></textarea>
+
+          <div class="generate-tabs" id="generate-tabs" style="display:none">
+            <button class="tab-btn active" id="gtab-preview" onclick="switchPromptTab('preview')">Preview</button>
+            <button class="tab-btn" id="gtab-edit" onclick="switchPromptTab('edit')">Edit</button>
+          </div>
+        </div>
+
+        <div class="feedback-section" id="feedback-section" style="display:none">
+          <button class="feedback-toggle" id="feedback-toggle" onclick="toggleFeedbackForm()">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 2a6 6 0 100 12A6 6 0 008 2zM8 5v4M8 10.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Log issues with this prompt
+            <span class="feedback-toggle-chevron" id="feedback-chevron">+</span>
+          </button>
+          <div class="feedback-form" id="feedback-form" style="display:none">
+            <div class="feedback-tags-label">Common issues</div>
+            <div class="feedback-tags">
+              <label class="feedback-tag-item"><input type="checkbox" value="responsible-ai"> Responsible AI filter risk</label>
+              <label class="feedback-tag-item"><input type="checkbox" value="too-long"> Too long / over char limit</label>
+              <label class="feedback-tag-item"><input type="checkbox" value="wrong-tone"> Wrong tone</label>
+              <label class="feedback-tag-item"><input type="checkbox" value="missing-use-case"> Missing use case</label>
+              <label class="feedback-tag-item"><input type="checkbox" value="template-duplication"> Template duplication</label>
+              <label class="feedback-tag-item"><input type="checkbox" value="sharepoint-issue"> SharePoint assumption error</label>
+              <label class="feedback-tag-item"><input type="checkbox" value="json-output"> JSON output (should be markdown)</label>
+            </div>
+            <textarea class="feedback-detail" id="feedback-detail" placeholder="Describe the issue in more detail (optional)..." rows="3"></textarea>
+            <div class="feedback-form-footer">
+              <label class="feedback-bank-check">
+                <input type="checkbox" id="add-to-bank" checked>
+                Add to feedback bank for future sessions
+              </label>
+              <button class="btn-log-feedback" id="submit-feedback-btn">Log Feedback</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-footer">
+          <div class="action-row">
+            <button class="btn-approve" id="approve-prompt-btn" disabled>
+              Approve & Generate Next
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l4 4 8-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STAGE 7: PACKAGE -->
+      <section class="stage-panel" id="stage-7">
+        <div class="panel-header">
+          <div class="panel-stage-label">Stage 07</div>
+          <h1 class="panel-title">Deployment Package</h1>
+          <p class="panel-subtitle">Your artefacts are ready. Download the complete deployment package.</p>
+        </div>
+
+        <div class="panel-body" id="package-display">
+          <!-- populated by JS -->
+        </div>
+
+        <div class="panel-footer">
+          <div class="action-row">
+            <button class="btn-secondary" id="new-session-btn">New Session</button>
+            <button class="btn-download" id="download-btn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 10l3 3 3-3M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Download Package (.zip)
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ── SESSIONS MODAL ──────────────────────────────────────────── -->
+  <div class="modal-overlay" id="sessions-modal" style="display:none" onclick="closeModalOnOverlay(event,'sessions-modal')">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <div class="modal-eyebrow">History</div>
+          <h2 class="modal-title">Sessions</h2>
+        </div>
+        <button class="modal-close" onclick="closeModal('sessions-modal')">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="sessions-list">
+        <div class="loading-row"><span class="spinner"></span>Loading sessions...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FEEDBACK BANK MODAL ─────────────────────────────────────── -->
+  <div class="modal-overlay" id="feedback-modal" style="display:none" onclick="closeModalOnOverlay(event,'feedback-modal')">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <div>
+          <div class="modal-eyebrow">Quality control</div>
+          <h2 class="modal-title">Feedback Bank</h2>
+        </div>
+        <button class="modal-close" onclick="closeModal('feedback-modal')">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-subheader">
+        Logged issues are automatically included in all future prompt generation calls.
+      </div>
+      <div class="modal-body" id="feedback-bank-list">
+        <div class="loading-row"><span class="spinner"></span>Loading feedback bank...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TOAST ───────────────────────────────────────────────────── -->
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+node_modules
+sessions/
+feedback-bank.json
+.env
+*.zip
+.DS_Store
