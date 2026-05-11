@@ -43,18 +43,23 @@
         </div>
         <div class="stage-nav-item" data-stage="5" id="nav-5">
           <span class="nav-num">05</span>
-          <span class="nav-label">Architecture</span>
+          <span class="nav-label">Success Criteria</span>
           <span class="nav-status" id="nav-status-5"></span>
         </div>
         <div class="stage-nav-item" data-stage="6" id="nav-6">
           <span class="nav-num">06</span>
-          <span class="nav-label">Generate</span>
+          <span class="nav-label">Architecture</span>
           <span class="nav-status" id="nav-status-6"></span>
         </div>
         <div class="stage-nav-item" data-stage="7" id="nav-7">
           <span class="nav-num">07</span>
-          <span class="nav-label">Package</span>
+          <span class="nav-label">Generate</span>
           <span class="nav-status" id="nav-status-7"></span>
+        </div>
+        <div class="stage-nav-item" data-stage="8" id="nav-8">
+          <span class="nav-num">08</span>
+          <span class="nav-label">Package</span>
+          <span class="nav-status" id="nav-status-8"></span>
         </div>
       </nav>
 
@@ -89,9 +94,10 @@
           <span class="tps-item" data-stage="2">Analysis</span>
           <span class="tps-item" data-stage="3">Clarify</span>
           <span class="tps-item" data-stage="4">Scope</span>
-          <span class="tps-item" data-stage="5">Architecture</span>
-          <span class="tps-item" data-stage="6">Generate</span>
-          <span class="tps-item" data-stage="7">Package</span>
+          <span class="tps-item" data-stage="5">Success Criteria</span>
+          <span class="tps-item" data-stage="6">Architecture</span>
+          <span class="tps-item" data-stage="7">Generate</span>
+          <span class="tps-item" data-stage="8">Package</span>
         </div>
       </div>
 
@@ -139,7 +145,7 @@
         <div class="panel-header">
           <div class="panel-stage-label">Stage 02</div>
           <h1 class="panel-title">Analysis</h1>
-          <p class="panel-subtitle">Review what the Studio extracted. Correct anything before proceeding.</p>
+          <p class="panel-subtitle">Review what the Studio extracted. Edit or deselect items and provide reasoning for changes.</p>
         </div>
 
         <div class="panel-body" id="extraction-display">
@@ -163,21 +169,34 @@
         <div class="panel-header">
           <div class="panel-stage-label">Stage 03</div>
           <h1 class="panel-title">Clarify</h1>
-          <p class="panel-subtitle">Answer these questions before scoping begins. Answers are locked in before any generation.</p>
+          <p class="panel-subtitle">Answer these questions and rank use cases by priority before scoping begins.</p>
         </div>
 
         <div class="panel-body">
           <form id="questions-form">
-            <!-- populated by JS -->
+            <div id="questions-container">
+              <!-- questions populated by JS -->
+            </div>
           </form>
+
+          <!-- USE CASE RANKING (appears after questions if multiple use cases) -->
+          <div id="ranking-container" style="display:none">
+            <div class="ranking-header">
+              <h3>Rank Use Cases by Priority</h3>
+              <p class="ranking-instructions">Drag to reorder. 1 = highest priority.</p>
+            </div>
+            <div id="use-case-ranking" class="use-case-ranking">
+              <!-- ranking cards populated by JS -->
+            </div>
+          </div>
         </div>
 
         <div class="panel-footer">
           <div id="stage3-error" class="error-msg" style="display:none"></div>
           <div class="action-row">
             <button class="btn-secondary" onclick="setStage(2)">Back</button>
-            <button class="btn-primary" id="submit-answers-btn">
-              Submit Answers & Generate Scope
+            <button class="btn-primary" id="submit-questions-btn">
+              Generate Scoping Document
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </div>
@@ -189,20 +208,14 @@
         <div class="panel-header">
           <div class="panel-stage-label">Stage 04</div>
           <h1 class="panel-title">Scoping Document</h1>
-          <p class="panel-subtitle">Review the scoping document. Edit if needed. No prompts will be generated without explicit approval.</p>
+          <p class="panel-subtitle">Review and approve the scoping document. This is the sign-off gate before any generation.</p>
         </div>
 
         <div class="panel-body">
-          <div class="scope-toolbar">
-            <div class="scope-toolbar-left">
-              <button class="tab-btn active" id="tab-preview" onclick="switchScopeTab('preview')">Preview</button>
-              <button class="tab-btn" id="tab-edit" onclick="switchScopeTab('edit')">Edit</button>
-            </div>
-            <div class="scope-toolbar-right">
-              <span class="generating-badge" id="scope-generating-badge">Generating...</span>
-            </div>
+          <div class="scope-tabs">
+            <button class="tab-btn active" id="tab-preview" onclick="switchTab('preview')">Preview</button>
+            <button class="tab-btn" id="tab-edit" onclick="switchTab('edit')">Edit</button>
           </div>
-
           <div id="scope-preview" class="scope-preview markdown-body">
             <!-- streaming content -->
           </div>
@@ -210,10 +223,6 @@
         </div>
 
         <div class="panel-footer">
-          <div class="gate-warning">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1L1 14h14L8 1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 6v4M8 11.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-            Scoping document gate — no prompts generated until you approve
-          </div>
           <div class="action-row">
             <button class="btn-secondary" onclick="setStage(3)">Back</button>
             <button class="btn-approve" id="approve-scope-btn" disabled>
@@ -224,36 +233,142 @@
         </div>
       </section>
 
-      <!-- STAGE 5: ARCHITECTURE -->
+      <!-- STAGE 5: SUCCESS CRITERIA & TESTING -->
       <section class="stage-panel" id="stage-5">
         <div class="panel-header">
           <div class="panel-stage-label">Stage 05</div>
-          <h1 class="panel-title">Architecture</h1>
-          <p class="panel-subtitle">Review the recommended prompt architecture before generation begins.</p>
+          <h1 class="panel-title">Success Criteria & Testing</h1>
+          <p class="panel-subtitle">Define measurable success criteria and testing outcomes before architectural decisions.</p>
         </div>
 
-        <div class="panel-body" id="architecture-display">
-          <!-- populated by JS -->
+        <div class="panel-body">
+          <div id="success-criteria-loading" class="loading-container" style="display:none">
+            <div class="spinner"></div>
+            <p id="success-criteria-status">Generating success criteria...</p>
+          </div>
+
+          <div id="success-criteria-content" style="display:none;">
+            <div class="criteria-section">
+              <div class="section-header">
+                <h3>Success Criteria</h3>
+                <button id="add-criterion-btn" class="add-criteria-btn">+ Add Criterion</button>
+              </div>
+              <div id="success-criteria-list" class="criteria-list">
+                <!-- criteria items populated by JS -->
+              </div>
+            </div>
+
+            <div class="criteria-section">
+              <div class="section-header">
+                <h3>Testing Outcomes</h3>
+                <button id="add-outcome-btn" class="add-criteria-btn">+ Add Outcome</button>
+              </div>
+              <div id="testing-outcomes-list" class="criteria-list">
+                <!-- outcome items populated by JS -->
+              </div>
+            </div>
+
+            <div class="guided-questions-toggle">
+              <button id="toggle-guided-questions" class="btn-secondary">
+                <span>📝</span> Add criteria via guided questions
+              </button>
+            </div>
+
+            <div id="guided-questions-container" style="display:none;">
+              <div class="guided-questions">
+                <h4>Answer these questions to refine your criteria:</h4>
+                <div id="guided-questions-list">
+                  <!-- guided questions populated by JS -->
+                </div>
+                <button id="apply-guided-answers" class="btn-primary">Apply Answers</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="panel-footer">
           <div id="stage5-error" class="error-msg" style="display:none"></div>
           <div class="action-row">
             <button class="btn-secondary" onclick="setStage(4)">Back</button>
-            <button class="btn-approve" id="approve-arch-btn">
-              Approve & Begin Generation
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l4 4 8-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button class="btn-approve" id="continue-to-architecture">
+              Continue to Architecture
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </div>
         </div>
       </section>
 
-      <!-- STAGE 6: GENERATE -->
+      <!-- STAGE 6: ARCHITECTURE -->
       <section class="stage-panel" id="stage-6">
         <div class="panel-header">
           <div class="panel-stage-label">Stage 06</div>
+          <h1 class="panel-title">Architecture</h1>
+          <p class="panel-subtitle">Review the architectural approach and select which files to generate.</p>
+        </div>
+
+        <div class="panel-body">
+          <div id="architecture-loading" class="loading-container" style="display:none">
+            <div class="spinner"></div>
+            <p id="architecture-status">Analyzing architecture options...</p>
+          </div>
+
+          <div id="architecture-content" style="display:none;">
+            <div id="architecture-recommendation" class="architecture-recommendation">
+              <!-- streaming architectural analysis -->
+            </div>
+
+            <div class="file-selection-section">
+              <h3>Configure File Generation</h3>
+
+              <div class="naming-convention">
+                <label for="naming-pattern">Naming Convention</label>
+                <div class="naming-input-group">
+                  <input type="text" id="naming-pattern" value="{component}-v{version}" placeholder="{component}-v{version}">
+                  <button id="template-dropdown-btn" class="template-dropdown-btn">Templates ▾</button>
+                </div>
+                <div id="template-suggestions" class="template-suggestions" style="display:none;">
+                  <button class="template-option" data-template="{component}-v{version}">{component}-v{version}</button>
+                  <button class="template-option" data-template="{project}-{component}-{date}">{project}-{component}-{date}</button>
+                  <button class="template-option" data-template="{component}_{version}">{component}_{version}</button>
+                  <button class="template-option" data-template="{component}-{date}">{component}-{date}</button>
+                </div>
+                <div class="naming-preview">
+                  Preview: <code id="naming-preview-code">generate-sections-v2.md</code>
+                </div>
+              </div>
+
+              <div class="file-selection-header">
+                <h4>Select Files to Generate</h4>
+                <div class="selection-summary">
+                  <strong><span id="selected-count">0</span> of <span id="total-count">0</span> files selected</strong>
+                </div>
+              </div>
+
+              <div id="file-selection-list" class="file-list">
+                <!-- file checkboxes populated by JS -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-footer">
+          <div id="stage6-error" class="error-msg" style="display:none"></div>
+          <div class="action-row">
+            <button class="btn-secondary" onclick="setStage(5)">Back</button>
+            <button class="btn-approve" id="continue-to-generate">
+              Continue to Generate
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- STAGE 7: GENERATE -->
+      <section class="stage-panel" id="stage-7">
+        <div class="panel-header">
+          <div class="panel-stage-label">Stage 07</div>
           <div class="generate-header-row">
-            <h1 class="panel-title" id="generate-title">Generating...</h1>
+            <h1 class="panel-title" id="generate-title">Generate Prompts</h1>
             <div class="generate-progress" id="generate-progress"></div>
           </div>
           <p class="panel-subtitle" id="generate-subtitle"></p>
@@ -314,10 +429,10 @@
         </div>
       </section>
 
-      <!-- STAGE 7: PACKAGE -->
-      <section class="stage-panel" id="stage-7">
+      <!-- STAGE 8: PACKAGE -->
+      <section class="stage-panel" id="stage-8">
         <div class="panel-header">
-          <div class="panel-stage-label">Stage 07</div>
+          <div class="panel-stage-label">Stage 08</div>
           <h1 class="panel-title">Deployment Package</h1>
           <p class="panel-subtitle">Your artefacts are ready. Download the complete deployment package.</p>
         </div>
@@ -353,7 +468,6 @@
         </button>
       </div>
       <div class="modal-body" id="sessions-list">
-        <div class="loading-row"><span class="spinner"></span>Loading sessions...</div>
       </div>
     </div>
   </div>
@@ -374,10 +488,37 @@
         Logged issues are automatically included in all future prompt generation calls.
       </div>
       <div class="modal-body" id="feedback-bank-list">
-        <div class="loading-row"><span class="spinner"></span>Loading feedback bank...</div>
       </div>
     </div>
   </div>
+
+  <!-- ── EDIT REASON DIALOG ──────────────────────────────────────── -->
+  <dialog id="edit-reason-dialog" class="edit-reason-dialog">
+    <h3>Why are you making this change?</h3>
+    <form id="edit-reason-form">
+      <div class="form-group">
+        <label for="reason-select">Reason</label>
+        <select id="reason-select" required>
+          <option value="">Select a reason...</option>
+          <option value="out-of-scope">Out of scope for this project</option>
+          <option value="incorrect">Incorrect extraction</option>
+          <option value="duplicate">Duplicate of another item</option>
+          <option value="rewording">Needs rewording for clarity</option>
+          <option value="missing-detail">Missing critical detail</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="reason-detail">Additional details (optional)</label>
+        <textarea id="reason-detail" rows="3" maxlength="500" placeholder="Add any additional context..."></textarea>
+        <small class="char-count"><span id="detail-char-count">0</span>/500</small>
+      </div>
+      <div class="dialog-buttons">
+        <button type="button" id="cancel-reason-btn" class="btn-secondary">Cancel</button>
+        <button type="submit" class="btn-primary">Save Reason</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- ── TOAST ───────────────────────────────────────────────────── -->
   <div class="toast" id="toast"></div>

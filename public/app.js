@@ -1,10 +1,17 @@
 // ─── STATE ────────────────────────────────────────────────────────────────
 const session = {
   extraction: null,
+  extractionEdits: [],           // NEW: track edits/deselects in Stage 2
   questions: [],
   answers: {},
+  rankedUseCases: [],             // NEW: ranked use cases from Stage 3
   scopingDoc: '',
+  successCriteria: [],            // NEW: Stage 5
+  testingOutcomes: [],            // NEW: Stage 5
   architecture: null,
+  architectureAnalysis: '',       // NEW: streamed pros/cons analysis
+  selectedFiles: [],              // NEW: which files user chose to generate
+  namingConvention: '{component}-v{version}',  // NEW: file naming pattern
   generatedPrompts: [],
   trackerHtml: '',
   promptQueue: []
@@ -70,7 +77,7 @@ function setStage(n) {
   });
 
   // Top progress bar
-  const total = 7;
+  const total = 8;  // Changed from 7 to 8
   const pct = ((n - 1) / (total - 1)) * 100;
   const fill = document.getElementById('top-progress-fill');
   if (fill) fill.style.width = `${pct}%`;
@@ -102,6 +109,21 @@ function hideError(stageNum) {
   if (el) el.style.display = 'none';
 }
 
+function switchTab(tab) {
+  if (tab === 'preview') {
+    document.getElementById('scope-preview').style.display = 'block';
+    document.getElementById('scope-editor').style.display = 'none';
+    document.getElementById('tab-preview').classList.add('active');
+    document.getElementById('tab-edit').classList.remove('active');
+  } else if (tab === 'edit') {
+    document.getElementById('scope-editor').value = session.scopingDoc;
+    document.getElementById('scope-preview').style.display = 'none';
+    document.getElementById('scope-editor').style.display = 'block';
+    document.getElementById('tab-preview').classList.remove('active');
+    document.getElementById('tab-edit').classList.add('active');
+  }
+}
+
 function setLoading(btn, text) {
   btn.disabled = true;
   btn._originalHTML = btn.innerHTML;
@@ -112,6 +134,246 @@ function clearLoading(btn) {
   btn.disabled = false;
   if (btn._originalHTML) btn.innerHTML = btn._originalHTML;
 }
+
+// ─── NEW UTILITIES FOR ENHANCED WORKFLOW ──────────────────────────────────
+
+// Edit Reason Dialog
+let currentEditItem = null;
+
+function showEditReasonDialog(itemId, itemType, action, originalText) {
+  const dialog = document.getElementById('edit-reason-dialog');
+  currentEditItem = { itemId, itemType, action, originalText };
+  
+  const form = document.getElementById('edit-reason-form');
+  form.reset();
+  
+  dialog.showModal();
+}
+
+document.getElementById('edit-reason-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  
+  const reason = document.getElementById('reason-select').value;
+  const detail = document.getElementById('reason-detail').value;
+  
+  if (!reason) {
+    alert('Please select a reason');
+    return;
+  }
+  
+  const edit = {
+    ...currentEditItem,
+    reason,
+    detail,
+    timestamp: new Date().toISOString()
+  };
+  
+  session.extractionEdits.push(edit);
+  
+  document.getElementById('edit-reason-dialog').close();
+  currentEditItem = null;
+});
+
+document.getElementById('cancel-reason-btn').addEventListener('click', () => {
+  document.getElementById('edit-reason-dialog').close();
+  currentEditItem = null;
+});
+
+// Character counter for reason detail
+document.getElementById('reason-detail').addEventListener('input', (e) => {
+  document.getElementById('detail-char-count').textContent = e.target.value.length;
+});
+
+// Drag & Drop for Use Case Ranking
+let draggedElement = null;
+
+function initUseCaseRanking(useCases) {
+  const container = document.getElementById('use-case-ranking');
+  const rankingContainer = document.getElementById('ranking-container');
+  
+  if (!useCases || useCases.length <= 1) {
+    rankingContainer.style.display = 'none';
+    session.rankedUseCases = useCases || [];
+    return;
+  }
+  
+  rankingContainer.style.display = 'block';
+  container.innerHTML = '';
+  
+  useCases.forEach((uc, index) => {
+    const card = document.createElement('div');
+    card.className = 'use-case-card';
+    card.draggable = true;
+    card.dataset.rank = index + 1;
+    card.dataset.text = typeof uc === 'string' ? uc : uc.text || uc;
+    
+    card.innerHTML = `
+      <span class="rank-badge">${index + 1}</span>
+      <div class="use-case-content">${esc(typeof uc === 'string' ? uc : uc.text || uc)}</div>
+      <div class="drag-handle">⋮⋮</div>
+    `;
+    
+    card.addEventListener('dragstart', handleDragStart);
+    card.addEventListener('dragover', handleDragOver);
+    card.addEventListener('drop', handleDrop);
+    card.addEventListener('dragend', handleDragEnd);
+    
+    container.appendChild(card);
+  });
+}
+
+function handleDragStart(e) {
+  draggedElement = e.currentTarget;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  
+  const afterElement = getDragAfterElement(e.currentTarget.parentElement, e.clientY);
+  const container = e.currentTarget.parentElement;
+  
+  if (afterElement == null) {
+    container.appendChild(draggedElement);
+  } else {
+    container.insertBefore(draggedElement, afterElement);
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+}
+
+function handleDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  updateRankNumbers();
+}
+
+function getDragAfterElement(container, y) {
+  const draggableElements = [...container.querySelectorAll('.use-case-card:not(.dragging)')];
+  
+  return draggableElements.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    
+    if (offset < 0 && offset > closest.offset) {
+      return { offset: offset, element: child };
+    } else {
+      return closest;
+    }
+  }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+function updateRankNumbers() {
+  const cards = document.querySelectorAll('.use-case-card');
+  session.rankedUseCases = [];
+  
+  cards.forEach((card, index) => {
+    card.querySelector('.rank-badge').textContent = index + 1;
+    card.dataset.rank = index + 1;
+    session.rankedUseCases.push({
+      rank: index + 1,
+      text: card.dataset.text
+    });
+  });
+}
+
+// Success Criteria Management
+function addCriterionItem(listId, text = '') {
+  const list = document.getElementById(listId);
+  const item = document.createElement('div');
+  item.className = 'criteria-item';
+  
+  const id = `criterion-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  item.innerHTML = `
+    <input type="checkbox" checked data-id="${id}">
+    <textarea placeholder="Enter criterion..." data-id="${id}">${esc(text)}</textarea>
+    <button class="edit-btn" onclick="focusCriterion('${id}')">✎</button>
+    <button class="delete-btn" onclick="removeCriterion('${id}')">×</button>
+  `;
+  
+  list.appendChild(item);
+  
+  // Focus the textarea if it's empty
+  if (!text) {
+    item.querySelector('textarea').focus();
+  }
+}
+
+function focusCriterion(id) {
+  const textarea = document.querySelector(`textarea[data-id="${id}"]`);
+  if (textarea) textarea.focus();
+}
+
+function removeCriterion(id) {
+  const item = document.querySelector(`textarea[data-id="${id}"]`)?.closest('.criteria-item');
+  if (item && confirm('Remove this item?')) {
+    item.remove();
+  }
+}
+
+function collectCriteria() {
+  const criteriaItems = document.querySelectorAll('#success-criteria-list .criteria-item');
+  session.successCriteria = [];
+  
+  criteriaItems.forEach(item => {
+    const checkbox = item.querySelector('input[type="checkbox"]');
+    const textarea = item.querySelector('textarea');
+    if (checkbox.checked && textarea.value.trim()) {
+      session.successCriteria.push(textarea.value.trim());
+    }
+  });
+  
+  const outcomeItems = document.querySelectorAll('#testing-outcomes-list .criteria-item');
+  session.testingOutcomes = [];
+  
+  outcomeItems.forEach(item => {
+    const checkbox = item.querySelector('input[type="checkbox"]');
+    const textarea = item.querySelector('textarea');
+    if (checkbox.checked && textarea.value.trim()) {
+      session.testingOutcomes.push(textarea.value.trim());
+    }
+  });
+}
+
+// File Selection Management
+function updateFileSelectionSummary() {
+  const checkboxes = document.querySelectorAll('#file-selection-list input[type="checkbox"]');
+  const checked = Array.from(checkboxes).filter(cb => cb.checked).length;
+  const total = checkboxes.length;
+  
+  document.getElementById('selected-count').textContent = checked;
+  document.getElementById('total-count').textContent = total;
+  
+  session.selectedFiles = Array.from(checkboxes)
+    .filter(cb => cb.checked)
+    .map(cb => cb.dataset.fileId);
+}
+
+function updateNamingPreview() {
+  const pattern = document.getElementById('naming-pattern').value;
+  const preview = applyNamingConvention(pattern, {
+    component: 'generate-sections',
+    version: '2',
+    date: new Date().toISOString().split('T')[0].replace(/-/g, ''),
+    project: session.extraction?.clientName?.toLowerCase().substring(0, 3) || 'client'
+  });
+  
+  document.getElementById('naming-preview-code').textContent = preview + '.md';
+  session.namingConvention = pattern;
+}
+
+function applyNamingConvention(pattern, vars) {
+  return pattern
+    .replace(/{component}/g, vars.component)
+    .replace(/{version}/g, vars.version)
+    .replace(/{date}/g, vars.date)
+    .replace(/{project}/g, vars.project);
+}
+
 
 // ─── STAGE 1: INPUT ────────────────────────────────────────────────────────
 
@@ -152,69 +414,111 @@ function renderExtraction() {
   const { extraction } = session;
   const container = document.getElementById('extraction-display');
 
-  const useCaseTags = (extraction.useCases || []).map(u => `<span class="tag">${esc(u)}</span>`).join('');
-  const docTags = (extraction.documentTypes || []).map(d => `<span class="tag">${esc(d)}</span>`).join('') || '<span class="tag warning">None detected</span>';
-  const constraintTags = (extraction.constraints || []).map(c => `<span class="tag warning">${esc(c)}</span>`).join('') || '—';
-  const outputTags = (extraction.outputPrefs || []).map(o => `<span class="tag">${esc(o)}</span>`).join('') || '—';
-  const ambiguityTags = (extraction.ambiguities || []).map(a => `<span class="tag warning">${esc(a)}</span>`).join('') || '<span style="color:var(--green);font-size:13px">None — input was clear</span>';
+  const useCases = extraction.useCases || [];
+  const stakeholders = extraction.stakeholders || [];
+  const constraints = extraction.constraints || [];
+  const documentTypes = extraction.documentTypes || [];
 
-  const stakeholders = (extraction.stakeholders || []).length
-    ? extraction.stakeholders.map(s =>
-        `<div class="stakeholder-item"><span class="stakeholder-name">${esc(s.name || s)}</span>${s.role ? `<span class="stakeholder-role">· ${esc(s.role)}</span>` : ''}</div>`
-      ).join('')
-    : '<span style="color:var(--text-light);font-size:13px">None identified</span>';
-
-  const complexity = extraction.complexityScore || 'medium';
-  const archHint = extraction.architectureHint || 'unclear';
-
-  container.innerHTML = `
-    <div style="margin-bottom:16px">
+  let html = `
+    <div style="margin-bottom:24px">
       <div style="font-size:13.5px;color:var(--text-muted);margin-bottom:4px">Client / Project</div>
       <div style="font-size:16px;font-weight:600;color:var(--accent)">${esc(extraction.clientName || 'Unknown')}${extraction.projectName ? ` — <span style="font-weight:400">${esc(extraction.projectName)}</span>` : ''}</div>
     </div>
-
-    <div class="extraction-grid">
-      <div class="extraction-card">
-        <div class="extraction-card-title">Use Cases (${(extraction.useCases || []).length})</div>
-        <div class="tag-list">${useCaseTags || '<span style="color:var(--red);font-size:13px">None detected — check input</span>'}</div>
+    
+    <div style="margin-bottom:16px">
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px">Use Cases (${useCases.length})</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+  `;
+  
+  useCases.forEach((uc, i) => {
+    const id = `use-case-${i}`;
+    html += `
+      <div class="extraction-edit-card" data-id="${id}">
+        <input type="checkbox" checked data-type="useCase" data-id="${id}">
+        <textarea data-id="${id}" data-original="${esc(uc, true)}" data-type="useCase">${esc(uc)}</textarea>
       </div>
-
-      <div class="extraction-card">
-        <div class="extraction-card-title">Stakeholders</div>
-        <div class="stakeholder-list">${stakeholders}</div>
+    `;
+  });
+  
+  html += `
       </div>
-
-      <div class="extraction-card">
-        <div class="extraction-card-title">Input Document Types</div>
-        <div class="tag-list">${docTags}</div>
+    </div>
+    
+    <div style="margin-bottom:16px">
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px">Stakeholders (${stakeholders.length})</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+  `;
+  
+  stakeholders.forEach((s, i) => {
+    const id = `stakeholder-${i}`;
+    const text = typeof s === 'string' ? s : `${s.name}${s.role ? ' · ' + s.role : ''}`;
+    html += `
+      <div class="extraction-edit-card" data-id="${id}">
+        <input type="checkbox" checked data-type="stakeholder" data-id="${id}">
+        <textarea data-id="${id}" data-original="${esc(text, true)}" data-type="stakeholder">${esc(text)}</textarea>
       </div>
-
-      <div class="extraction-card">
-        <div class="extraction-card-title">Output Preferences</div>
-        <div class="tag-list">${outputTags}</div>
+    `;
+  });
+  
+  html += `
       </div>
-
-      <div class="extraction-card full-width">
-        <div class="extraction-card-title">Constraints Detected</div>
-        <div class="tag-list">${constraintTags}</div>
+    </div>
+    
+    <div style="margin-bottom:16px">
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px">Constraints (${constraints.length})</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+  `;
+  
+  constraints.forEach((c, i) => {
+    const id = `constraint-${i}`;
+    html += `
+      <div class="extraction-edit-card" data-id="${id}">
+        <input type="checkbox" checked data-type="constraint" data-id="${id}">
+        <textarea data-id="${id}" data-original="${esc(c, true)}" data-type="constraint">${esc(c)}</textarea>
       </div>
-
-      <div class="extraction-card full-width">
-        <div class="extraction-card-title">Ambiguities (to clarify)</div>
-        <div class="tag-list">${ambiguityTags}</div>
-      </div>
-
-      <div class="extraction-card">
-        <div class="extraction-card-title">Complexity</div>
-        <span class="complexity-badge ${complexity}">${complexity.charAt(0).toUpperCase() + complexity.slice(1)}</span>
-      </div>
-
-      <div class="extraction-card">
-        <div class="extraction-card-title">Architecture Hint</div>
-        <span class="tag">${archHint}</span>
+    `;
+  });
+  
+  html += `
       </div>
     </div>
   `;
+  
+  container.innerHTML = html;
+  
+  // Attach event listeners for edit tracking
+  container.querySelectorAll('textarea').forEach(textarea => {
+    let lastValue = textarea.value;
+    
+    textarea.addEventListener('blur', () => {
+      const currentValue = textarea.value;
+      const originalValue = textarea.dataset.original;
+      
+      if (currentValue !== lastValue && currentValue !== originalValue) {
+        showEditReasonDialog(
+          textarea.dataset.id,
+          textarea.dataset.type,
+          'edited',
+          originalValue
+        );
+        lastValue = currentValue;
+      }
+    });
+  });
+  
+  container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+    checkbox.addEventListener('change', (e) => {
+      if (!e.target.checked) {
+        const textarea = container.querySelector(`textarea[data-id="${e.target.dataset.id}"]`);
+        showEditReasonDialog(
+          e.target.dataset.id,
+          e.target.dataset.type,
+          'deselected',
+          textarea.dataset.original
+        );
+      }
+    });
+  });
 }
 
 document.getElementById('confirm-extraction-btn').addEventListener('click', async () => {
@@ -223,6 +527,43 @@ document.getElementById('confirm-extraction-btn').addEventListener('click', asyn
   setLoading(btn, 'Generating questions...');
 
   try {
+    // Collect edited extraction
+    const useCases = [];
+    const stakeholders = [];
+    const constraints = [];
+    
+    document.querySelectorAll('[data-type="useCase"]').forEach(el => {
+      if (el.type === 'checkbox' && el.checked) {
+        const textarea = document.querySelector(`textarea[data-id="${el.dataset.id}"]`);
+        if (textarea && textarea.value.trim()) {
+          useCases.push(textarea.value.trim());
+        }
+      }
+    });
+    
+    document.querySelectorAll('[data-type="stakeholder"]').forEach(el => {
+      if (el.type === 'checkbox' && el.checked) {
+        const textarea = document.querySelector(`textarea[data-id="${el.dataset.id}"]`);
+        if (textarea && textarea.value.trim()) {
+          stakeholders.push(textarea.value.trim());
+        }
+      }
+    });
+    
+    document.querySelectorAll('[data-type="constraint"]').forEach(el => {
+      if (el.type === 'checkbox' && el.checked) {
+        const textarea = document.querySelector(`textarea[data-id="${el.dataset.id}"]`);
+        if (textarea && textarea.value.trim()) {
+          constraints.push(textarea.value.trim());
+        }
+      }
+    });
+    
+    // Update session with edited values
+    session.extraction.useCases = useCases;
+    session.extraction.stakeholders = stakeholders;
+    session.extraction.constraints = constraints;
+    
     const result = await api('/api/questions', { extraction: session.extraction });
     session.questions = result.questions;
     setStage(3);
@@ -267,9 +608,16 @@ function renderQuestions() {
       </div>
     `;
   }).join('');
+
+  // Initialize ranking AFTER questions are rendered
+  if (session.extraction?.useCases?.length > 1) {
+    setTimeout(() => {
+      initUseCaseRanking(session.extraction.useCases);
+    }, 100);
+  }
 }
 
-document.getElementById('submit-answers-btn').addEventListener('click', async () => {
+document.getElementById('submit-questions-btn').addEventListener('click', async () => {
   hideError(3);
 
   // Collect answers
@@ -292,23 +640,47 @@ document.getElementById('submit-answers-btn').addEventListener('click', async ()
     return;
   }
 
-  setStage(4);
-  generateScope();
+  const btn = document.getElementById('submit-questions-btn');  // Changed from submit-answers-btn
+  setLoading(btn, 'Generating scope...');
+  
+  try {
+    // Save ranking to KV
+    if (session.rankedUseCases.length > 0) {
+      const sessionId = `session-${Date.now()}`;
+      await fetch('/api/save-ranking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          projectName: session.extraction?.projectName || 'Unnamed Project',
+          rankedUseCases: session.rankedUseCases,
+          clarifyAnswers: session.answers
+        })
+      });
+    }
+    
+    setStage(4);
+    generateScope();
+  } catch (err) {
+    showError(3, `Failed: ${err.message}`);
+  } finally {
+    clearLoading(btn);
+  }
 });
 
 // ─── STAGE 4: SCOPE ────────────────────────────────────────────────────────
 
 async function generateScope() {
   const preview = document.getElementById('scope-preview');
-  const badge = document.getElementById('scope-generating-badge');
+  // const badge = document.getElementById('scope-generating-badge');
   const approveBtn = document.getElementById('approve-scope-btn');
 
   preview.innerHTML = '<div class="loading-row"><span class="spinner"></span>Generating scoping document...</div>';
   streamAccumulator = '';
   approveBtn.disabled = true;
-  badge.textContent = 'Generating...';
-  badge.classList.remove('done');
-  badge.style.display = 'inline-block';
+  // badge.textContent = 'Generating...';
+  // badge.classList.remove('done');
+  // badge.style.display = 'inline-block';
 
   try {
     await streamApi(
@@ -322,8 +694,6 @@ async function generateScope() {
       () => {
         session.scopingDoc = streamAccumulator;
         document.getElementById('scope-editor').value = streamAccumulator;
-        badge.textContent = 'Complete';
-        badge.classList.add('done');
         approveBtn.disabled = false;
       },
       (err) => {
@@ -360,97 +730,272 @@ function switchScopeTab(tab) {
   }
 }
 
-document.getElementById('approve-scope-btn').addEventListener('click', async () => {
-  // Capture any edits from the editor tab
-  const editor = document.getElementById('scope-editor');
-  if (editor.style.display !== 'none') {
-    session.scopingDoc = editor.value;
-  }
-
-  const btn = document.getElementById('approve-scope-btn');
-  setLoading(btn, 'Getting architecture recommendation...');
-
-  try {
-    const result = await api('/api/architecture', {
-      extraction: session.extraction,
-      answers: session.answers,
-      questions: session.questions
-    });
-    session.architecture = result.architecture;
-    setStage(5);
-    renderArchitecture();
-  } catch (err) {
-    showError(4, `Failed to get architecture recommendation: ${err.message}`);
-  } finally {
-    clearLoading(btn);
-  }
+document.getElementById('approve-scope-btn').addEventListener('click', () => {
+  setStage(5);
+  generateSuccessCriteria();
 });
 
-// ─── STAGE 5: ARCHITECTURE ────────────────────────────────────────────────
+// ─── STAGE 5: SUCCESS CRITERIA & TESTING ──────────────────────────────────
 
-function renderArchitecture() {
-  const { architecture } = session;
-  const container = document.getElementById('architecture-display');
-  const prefix = architecture.filePrefix || 'client';
-  const isModular = architecture.recommendation === 'modular';
-
-  const files = isModular
-    ? [
-        { name: `${prefix}-copilot-instructions-v1.0.md`, type: 'Copilot Instructions', cls: 'copilot' },
-        ...(architecture.promptNames || []).map(n => ({
-          name: `${prefix}-${n.toLowerCase().replace(/\s+/g, '-')}-v1.0.md`,
-          type: 'Azure Prompt',
-          cls: 'azure'
-        }))
-      ]
-    : [{ name: `${prefix}-copilot-instructions-v1.0.md`, type: 'Copilot Instructions', cls: 'copilot' }];
-
-  const warnings = (architecture.warnings || []).map(w =>
-    `<div class="arch-warning">
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1L1 14h14L8 1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 6v4M8 11.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      ${esc(w)}
-    </div>`
-  ).join('');
-
-  container.innerHTML = `
-    <div class="arch-recommendation ${architecture.recommendation}">
-      ${isModular
-        ? '<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="10" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="10" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>'
-        : '<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>'}
-      ${isModular ? 'Modular Architecture' : 'Monolithic Architecture'} — ${architecture.promptCount} file${architecture.promptCount > 1 ? 's' : ''}
-    </div>
-
-    <div class="arch-rationale">${esc(architecture.rationale)}</div>
-
-    ${warnings}
-
-    <div class="arch-files">
-      <div class="arch-files-header">Files to be generated</div>
-      ${files.map(f => `
-        <div class="arch-file-item">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.5"/><path d="M10 2v4h4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-          <span class="arch-file-name">${esc(f.name)}</span>
-          <span class="arch-file-type ${f.cls}">${esc(f.type)}</span>
-        </div>
-      `).join('')}
-    </div>
-
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:14px 18px;font-size:12.5px;color:var(--text-muted);">
-      <strong style="color:var(--text)">Naming convention:</strong> <code style="font-family:var(--mono);font-size:11.5px">${esc(architecture.fileNamingConvention || `${prefix}-[function]-v1.0.md`)}</code>
-    </div>
-  `;
-
-  // Store the file list for generation
-  session.promptQueue = files;
+async function generateSuccessCriteria() {
+  document.getElementById('success-criteria-loading').style.display = 'flex';
+  document.getElementById('success-criteria-content').style.display = 'none';
+  
+  const statusEl = document.getElementById('success-criteria-status');
+  statusEl.textContent = 'Generating success criteria...';
+  
+  let accumulatedText = '';
+  
+  try {
+    await streamApi(
+      '/api/generate-success-criteria',
+      {
+        scope: session.scopingDoc,
+        useCases: session.rankedUseCases.length > 0 ? session.rankedUseCases : session.extraction.useCases
+      },
+      (chunk) => {
+        accumulatedText += chunk;
+      },
+      () => {
+        // Parse the markdown and populate lists
+        parseSuccessCriteria(accumulatedText);
+        
+        document.getElementById('success-criteria-loading').style.display = 'none';
+        document.getElementById('success-criteria-content').style.display = 'block';
+      },
+      (err) => {
+        showError(5, `Failed to generate criteria: ${err.message}`);
+        document.getElementById('success-criteria-loading').style.display = 'none';
+      }
+    );
+  } catch (err) {
+    showError(5, `Failed to generate criteria: ${err.message}`);
+    document.getElementById('success-criteria-loading').style.display = 'none';
+  }
 }
 
-document.getElementById('approve-arch-btn').addEventListener('click', () => {
-  setStage(6);
-  currentPromptIndex = 0;
-  generateCurrentPrompt();
+function parseSuccessCriteria(markdown) {
+  const lines = markdown.split('\n');
+  let inCriteria = false;
+  let inOutcomes = false;
+  
+  const criteria = [];
+  const outcomes = [];
+  
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    
+    if (trimmed.includes('## Success Criteria')) {
+      inCriteria = true;
+      inOutcomes = false;
+    } else if (trimmed.includes('## Testing Outcomes')) {
+      inCriteria = false;
+      inOutcomes = true;
+    } else if (trimmed.match(/^\d+\.\s+(.+)$/)) {
+      const text = trimmed.replace(/^\d+\.\s+/, '');
+      if (inCriteria) criteria.push(text);
+      if (inOutcomes) outcomes.push(text);
+    }
+  });
+  
+  const criteriaList = document.getElementById('success-criteria-list');
+  const outcomesList = document.getElementById('testing-outcomes-list');
+  
+  criteriaList.innerHTML = '';
+  outcomesList.innerHTML = '';
+  
+  criteria.forEach(c => addCriterionItem('success-criteria-list', c));
+  outcomes.forEach(o => addCriterionItem('testing-outcomes-list', o));
+}
+
+// Add criterion button handlers
+document.getElementById('add-criterion-btn').addEventListener('click', () => {
+  addCriterionItem('success-criteria-list');
 });
 
-// ─── STAGE 6: GENERATE ────────────────────────────────────────────────────
+document.getElementById('add-outcome-btn').addEventListener('click', () => {
+  addCriterionItem('testing-outcomes-list');
+});
+
+// Guided questions toggle
+document.getElementById('toggle-guided-questions').addEventListener('click', () => {
+  const container = document.getElementById('guided-questions-container');
+  const isVisible = container.style.display === 'block';
+  container.style.display = isVisible ? 'none' : 'block';
+  
+  if (!isVisible) {
+    // Populate guided questions
+    document.getElementById('guided-questions-list').innerHTML = `
+      <div class="guided-question-item">
+        <label>What is the maximum acceptable response time?</label>
+        <input type="text" id="guided-q1" placeholder="e.g., 45 seconds">
+      </div>
+      <div class="guided-question-item">
+        <label>What error rate is tolerable?</label>
+        <input type="text" id="guided-q2" placeholder="e.g., Less than 1% fabricated content">
+      </div>
+      <div class="guided-question-item">
+        <label>Which features are must-have vs nice-to-have?</label>
+        <textarea id="guided-q3" rows="3" placeholder="List critical features..."></textarea>
+      </div>
+    `;
+  }
+});
+
+// Apply guided answers
+document.getElementById('apply-guided-answers').addEventListener('click', () => {
+  const q1 = document.getElementById('guided-q1')?.value;
+  const q2 = document.getElementById('guided-q2')?.value;
+  const q3 = document.getElementById('guided-q3')?.value;
+  
+  if (q1) addCriterionItem('success-criteria-list', `Response time under ${q1}`);
+  if (q2) addCriterionItem('success-criteria-list', `Error rate: ${q2}`);
+  if (q3) addCriterionItem('testing-outcomes-list', q3);
+  
+  document.getElementById('guided-questions-container').style.display = 'none';
+  showToast('Guided answers added to criteria');
+});
+
+// Continue to Architecture button
+document.getElementById('continue-to-architecture').addEventListener('click', () => {
+  collectCriteria();
+  
+  if (session.successCriteria.length === 0) {
+    showError(5, 'Please add at least one success criterion');
+    return;
+  }
+  
+  setStage(6);
+  generateArchitectureAnalysis();
+});
+
+// ─── STAGE 6: ARCHITECTURE ────────────────────────────────────────────────
+
+async function generateArchitectureAnalysis() {
+  document.getElementById('architecture-loading').style.display = 'flex';
+  document.getElementById('architecture-content').style.display = 'none';
+  
+  const statusEl = document.getElementById('architecture-status');
+  statusEl.textContent = 'Analyzing architecture options...';
+  
+  session.architectureAnalysis = '';
+  const container = document.getElementById('architecture-recommendation');
+  container.innerHTML = '';
+  
+  try {
+    await streamApi(
+      '/api/generate-architecture-analysis',
+      {
+        scope: session.scopingDoc,
+        useCases: session.rankedUseCases.length > 0 ? session.rankedUseCases : session.extraction.useCases,
+        successCriteria: session.successCriteria,
+        testingOutcomes: session.testingOutcomes
+      },
+      (chunk) => {
+        session.architectureAnalysis += chunk;
+        container.innerHTML = marked.parse(session.architectureAnalysis);
+      },
+      () => {
+        // Parse file structure from the markdown
+        parseFileStructure(session.architectureAnalysis);
+        
+        document.getElementById('architecture-loading').style.display = 'none';
+        document.getElementById('architecture-content').style.display = 'block';
+        
+        // Initialize naming convention
+        updateNamingPreview();
+      },
+      (err) => {
+        showError(6, `Failed to generate architecture: ${err.message}`);
+        document.getElementById('architecture-loading').style.display = 'none';
+      }
+    );
+  } catch (err) {
+    showError(6, `Failed to generate architecture: ${err.message}`);
+    document.getElementById('architecture-loading').style.display = 'none';
+  }
+}
+
+function parseFileStructure(markdown) {
+  // Extract file list from the markdown
+  const files = [];
+  const lines = markdown.split('\n');
+  
+  let inFileSection = false;
+  lines.forEach(line => {
+    if (line.includes('FILE STRUCTURE') || line.includes('File Structure')) {
+      inFileSection = true;
+    } else if (line.match(/^-\s+(.+?)\s*\(REQUIRED\)/i)) {
+      const name = line.replace(/^-\s+/, '').replace(/\s*\(REQUIRED\)/i, '').trim();
+      files.push({ id: toFileId(name), name, required: true, description: 'Required' });
+    } else if (line.match(/^-\s+(.+)/)) {
+      const name = line.replace(/^-\s+/, '').trim();
+      if (inFileSection && name && !name.startsWith('#')) {
+        files.push({ id: toFileId(name), name, required: false, description: '' });
+      }
+    }
+  });
+  
+  // Render file selection list
+  const fileList = document.getElementById('file-selection-list');
+  fileList.innerHTML = '';
+  
+  files.forEach(file => {
+    const item = document.createElement('div');
+    item.className = 'file-item' + (file.required ? ' disabled' : '');
+    item.innerHTML = `
+      <input type="checkbox" 
+             ${file.required ? 'checked disabled' : 'checked'} 
+             data-file-id="${file.id}">
+      <label>
+        <span class="file-name">${esc(file.name)}</span>
+        <span class="file-description">${esc(file.description || 'Generated prompt file')}</span>
+      </label>
+    `;
+    fileList.appendChild(item);
+  });
+  
+  // Attach change listeners
+  fileList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', updateFileSelectionSummary);
+  });
+  
+  updateFileSelectionSummary();
+}
+
+function toFileId(name) {
+  return name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+}
+
+// Naming convention handlers
+document.getElementById('naming-pattern').addEventListener('input', updateNamingPreview);
+
+document.getElementById('template-dropdown-btn').addEventListener('click', () => {
+  const suggestions = document.getElementById('template-suggestions');
+  suggestions.style.display = suggestions.style.display === 'none' ? 'block' : 'none';
+});
+
+document.querySelectorAll('.template-option').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    const template = e.target.dataset.template;
+    document.getElementById('naming-pattern').value = template;
+    updateNamingPreview();
+    document.getElementById('template-suggestions').style.display = 'none';
+  });
+});
+
+// Continue to Generate button
+document.getElementById('continue-to-generate').addEventListener('click', () => {
+  if (session.selectedFiles.length === 0) {
+    showError(6, 'Please select at least one file to generate');
+    return;
+  }
+  
+  setStage(7);
+  startGeneration();
+});
+
+// ─── STAGE 7: GENERATE ────────────────────────────────────────────────────
 
 function buildPromptMeta(file, index) {
   const isCopilot = file.type === 'Copilot Instructions';
@@ -605,12 +1150,12 @@ document.getElementById('approve-prompt-btn').addEventListener('click', async ()
   if (currentPromptIndex < session.promptQueue.length) {
     generateCurrentPrompt();
   } else {
-    setStage(7);
+    setStage(8);
     buildPackageStage();
   }
 });
 
-// ─── STAGE 7: PACKAGE ─────────────────────────────────────────────────────
+// ─── STAGE 8: PACKAGE ─────────────────────────────────────────────────────
 
 async function buildPackageStage() {
   const container = document.getElementById('package-display');
@@ -985,8 +1530,21 @@ function showToast(msg, type = 'success') {
 
 function resetSession() {
   Object.assign(session, {
-    extraction: null, questions: [], answers: {}, scopingDoc: '',
-    architecture: null, generatedPrompts: [], trackerHtml: '', promptQueue: []
+    extraction: null,
+    extractionEdits: [],
+    questions: [],
+    answers: {},
+    rankedUseCases: [],
+    scopingDoc: '',
+    successCriteria: [],
+    testingOutcomes: [],
+    architecture: null,
+    architectureAnalysis: '',
+    selectedFiles: [],
+    namingConvention: '{component}-v{version}',
+    generatedPrompts: [],
+    trackerHtml: '',
+    promptQueue: []
   });
   currentPromptIndex = 0;
   streamAccumulator = '';
@@ -1009,5 +1567,57 @@ function esc(str, forAttr = false) {
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────
+
+// Add extraction-edit-card CSS class if not in CSS file
+if (!document.querySelector('style#dynamic-extraction-styles')) {
+  const style = document.createElement('style');
+  style.id = 'dynamic-extraction-styles';
+  style.textContent = `
+    .extraction-edit-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px;
+      background: var(--surface-subtle);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      transition: all 0.15s;
+    }
+    
+    .extraction-edit-card:hover {
+      background: var(--surface);
+      border-color: var(--border-strong);
+    }
+    
+    .extraction-edit-card input[type="checkbox"] {
+      margin-top: 6px;
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    
+    .extraction-edit-card textarea {
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      font-size: 14px;
+      font-family: var(--sans);
+      line-height: 1.5;
+      resize: vertical;
+      min-height: 60px;
+      background: var(--surface);
+      transition: all 0.15s;
+    }
+    
+    .extraction-edit-card textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-subtle);
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 setStage(1);

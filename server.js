@@ -24,21 +24,34 @@ if (USE_KV) kv = require('@vercel/kv').kv;
 // In-memory fallback (local dev without KV configured)
 const _localSessions = new Map();
 let _localFeedback = [];
+let _localRankings = [];
 
 async function kvGet(key) {
   if (USE_KV) return kv.get(key);
   if (key === 'feedback-bank') return _localFeedback;
+  if (key.startsWith('ranking:')) return _localRankings.find(r => r.sessionId === key.replace('ranking:', ''));
   return _localSessions.get(key) || null;
 }
 
 async function kvSet(key, value) {
   if (USE_KV) return kv.set(key, value);
   if (key === 'feedback-bank') { _localFeedback = value; return; }
+  if (key.startsWith('ranking:')) {
+    const sessionId = key.replace('ranking:', '');
+    _localRankings = _localRankings.filter(r => r.sessionId !== sessionId);
+    _localRankings.push(value);
+    return;
+  }
   _localSessions.set(key, value);
 }
 
 async function kvDel(key) {
   if (USE_KV) return kv.del(key);
+  if (key.startsWith('ranking:')) {
+    const sessionId = key.replace('ranking:', '');
+    _localRankings = _localRankings.filter(r => r.sessionId !== sessionId);
+    return;
+  }
   _localSessions.delete(key);
 }
 
@@ -46,6 +59,17 @@ async function kvKeys(pattern) {
   if (USE_KV) return kv.keys(pattern);
   const prefix = pattern.replace('*', '');
   return [..._localSessions.keys()].filter(k => k.startsWith(prefix));
+}
+
+async function kvLpush(key, value) {
+  if (USE_KV) return kv.lpush(key, value);
+  // In-memory: rankings are already stored in _localRankings
+}
+
+async function kvLrange(key, start, stop) {
+  if (USE_KV) return kv.lrange(key, start, stop);
+  // In-memory: return all ranking session IDs
+  return _localRankings.map(r => r.sessionId);
 }
 
 async function loadFeedbackBank() {
@@ -80,7 +104,7 @@ app.post('/api/extract', async (req, res) => {
 
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 2000,
       system: [
         {
@@ -124,7 +148,7 @@ app.post('/api/questions', async (req, res) => {
 
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 2000,
       system: [
         {
@@ -184,7 +208,7 @@ app.post('/api/scope', async (req, res) => {
       .join('\n\n');
 
     const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 4000,
       system: [
         {
@@ -280,7 +304,7 @@ app.post('/api/architecture', async (req, res) => {
       .join(' | ');
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,
       system: [
         {
@@ -380,7 +404,7 @@ RULES FOR AZURE PROMPTS:
 
   try {
     const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 4000,
       system: [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }],
       messages: [{
@@ -428,7 +452,7 @@ app.post('/api/tracker', async (req, res) => {
 
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 5000,
       system: [
         {
@@ -628,9 +652,220 @@ app.delete('/api/feedback/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// ============================================
+// NEW ENDPOINTS FOR ENHANCED WORKFLOW
+// ============================================
+
+// Save use case ranking to Vercel KV
+app.post('/api/save-ranking', async (req, res) => {
+  try {
+    const { sessionId, projectName, rankedUseCases, clarifyAnswers } = req.body;
+    
+    const rankingData = {
+      sessionId,
+      projectName,
+      timestamp: Date.now(),
+      rankedUseCases,
+      clarifyAnswers
+    };
+    
+    // Store the ranking
+    await kvSet(`ranking:${sessionId}`, rankingData);
+    
+    // Add to list for retrieval (only if KV is available)
+    if (USE_KV) {
+      await kvLpush('all-rankings', sessionId);
+    }
+    
+    res.json({ success: true, kvAvailable: USE_KV });
+  } catch (error) {
+    console.error('Error saving ranking:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Retrieve all saved rankings
+app.get('/api/get-rankings', async (req, res) => {
+  try {
+    let rankings = [];
+    
+    if (USE_KV) {
+      const sessionIds = await kvLrange('all-rankings', 0, -1);
+      rankings = await Promise.all(
+        sessionIds.map(async id => {
+          const data = await kvGet(`ranking:${id}`);
+          return data || null;
+        })
+      );
+    } else {
+      // In-memory fallback
+      rankings = _localRankings;
+    }
+    
+    res.json({ 
+      rankings: rankings.filter(Boolean),
+      kvAvailable: USE_KV 
+    });
+  } catch (error) {
+    console.error('Error retrieving rankings:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Generate success criteria (streaming)
+app.post('/api/generate-success-criteria', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  
+  try {
+    const { scope, useCases } = req.body;
+    
+    const systemPrompt = `You are generating success criteria and testing outcomes for an AI agent deployment.
+
+Based on the provided scope document and ranked use cases, generate:
+
+1. SUCCESS CRITERIA (5-8 measurable criteria)
+   - Each criterion must be specific and measurable
+   - Include performance targets (time, accuracy, completeness)
+   - Cover functional and non-functional requirements
+   - Format: "Agent must [action] within [constraint]"
+   
+   Example:
+   - IC Paper generation completes in under 45 seconds for standard cases
+   - Zero fabricated citations in generated content
+   - All applicable appendices generated with explicit data availability flags
+
+2. TESTING OUTCOMES (5-8 testable scenarios)
+   - Each outcome describes a complete user journey
+   - Include expected inputs and outputs
+   - Cover happy path and edge cases
+   - Format: "User can [action] and system [responds]"
+   
+   Example:
+   - User provides 3 SharePoint documents → generates Section 1 with citations
+   - User requests missing appendix → system flags absent data correctly
+   - User uploads malformed DDQ → system identifies parsing errors
+
+OUTPUT FORMAT (markdown):
+## Success Criteria
+
+1. [Criterion 1]
+2. [Criterion 2]
+...
+
+## Testing Outcomes
+
+1. [Outcome 1]
+2. [Outcome 2]
+...`;
+
+    const userPrompt = `# Project Scope\n\n${scope}\n\n# Ranked Use Cases\n\n${useCases.map((uc, i) => `${i + 1}. ${uc.text || uc}`).join('\n')}`;
+
+    const stream = anthropic.messages.stream({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta?.text) {
+        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (error) {
+    console.error('Error generating success criteria:', error);
+    res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+    res.end();
+  }
+});
+
+// Generate architecture recommendation with pros/cons (streaming)
+app.post('/api/generate-architecture-analysis', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  
+  try {
+    const { scope, useCases, successCriteria, testingOutcomes } = req.body;
+    
+    const systemPrompt = `You are recommending an architectural approach for an AI agent deployment.
+
+Based on the provided scope, success criteria, and use cases, provide:
+
+1. ARCHITECTURAL RECOMMENDATION (2-3 paragraphs)
+   - Recommend either monolithic or modular approach
+   - Explain reasoning based on complexity, timeout risk, maintainability
+   - Reference success criteria and testing outcomes
+
+2. MONOLITHIC APPROACH ANALYSIS
+   Pros:
+   - [3-5 specific advantages]
+   
+   Cons:
+   - [3-5 specific disadvantages]
+   
+   When to use:
+   - [1-2 sentences describing ideal use cases]
+
+3. MODULAR APPROACH ANALYSIS
+   Pros:
+   - [3-5 specific advantages]
+   
+   Cons:
+   - [3-5 specific disadvantages]
+   
+   When to use:
+   - [1-2 sentences describing ideal use cases]
+
+4. FILE STRUCTURE RECOMMENDATION
+   List all prompt files to be generated:
+   - copilot-instructions (REQUIRED)
+   - ic-paper-template (if applicable)
+   - [component-specific files]
+   
+   For each file include:
+   - Name
+   - Purpose (1 sentence)
+   - Estimated token count
+
+OUTPUT FORMAT (markdown with clear sections using ## headings)`;
+
+    const userPrompt = `# Project Scope\n\n${scope}\n\n# Use Cases\n\n${useCases.map((uc, i) => `${i + 1}. ${uc.text || uc}`).join('\n')}\n\n# Success Criteria\n\n${successCriteria.join('\n')}\n\n# Testing Outcomes\n\n${testingOutcomes.join('\n')}`;
+
+    const stream = anthropic.messages.stream({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 6000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta?.text) {
+        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (error) {
+    console.error('Error generating architecture:', error);
+    res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+    res.end();
+  }
+});
+
 if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => console.log(`LC Prompt Studio running at http://localhost:${PORT}`));
 }
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', kv: USE_KV ? 'available' : 'local-fallback' });
+});
 
 module.exports = app;
