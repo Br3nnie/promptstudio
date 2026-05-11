@@ -778,32 +778,49 @@ function parseSuccessCriteria(markdown) {
   const lines = markdown.split('\n');
   let inCriteria = false;
   let inOutcomes = false;
-  
+
   const criteria = [];
   const outcomes = [];
-  
+
   lines.forEach(line => {
     const trimmed = line.trim();
-    
-    if (trimmed.includes('## Success Criteria')) {
-      inCriteria = true;
-      inOutcomes = false;
-    } else if (trimmed.includes('## Testing Outcomes')) {
-      inCriteria = false;
-      inOutcomes = true;
-    } else if (trimmed.match(/^\d+\.\s+(.+)$/)) {
-      const text = trimmed.replace(/^\d+\.\s+/, '');
+    const lower = trimmed.toLowerCase();
+
+    // Detect any heading (##, ###, **, or bare text that is exactly the heading)
+    const isHeading = /^#{1,6}\s/.test(trimmed) || /^\*\*[^*]+\*\*\s*$/.test(trimmed);
+
+    if (/^#{1,6}\s+success criteria/i.test(trimmed) ||
+        (isHeading && lower.includes('success criteria')) ||
+        lower === 'success criteria') {
+      inCriteria = true; inOutcomes = false; return;
+    }
+    if (/^#{1,6}\s+testing outcomes?/i.test(trimmed) ||
+        (isHeading && lower.includes('testing outcome')) ||
+        lower === 'testing outcomes' || lower === 'testing outcome') {
+      inCriteria = false; inOutcomes = true; return;
+    }
+    // Any other heading closes both sections
+    if (isHeading) {
+      inCriteria = false; inOutcomes = false; return;
+    }
+
+    // Match numbered (1.) or bulleted (- or *) list items
+    const numbered = trimmed.match(/^\d+\.\s+(.+)$/);
+    const bulleted = trimmed.match(/^[-*]\s+(.+)$/);
+    const text = numbered ? numbered[1] : bulleted ? bulleted[1] : null;
+
+    if (text) {
       if (inCriteria) criteria.push(text);
       if (inOutcomes) outcomes.push(text);
     }
   });
-  
+
   const criteriaList = document.getElementById('success-criteria-list');
   const outcomesList = document.getElementById('testing-outcomes-list');
-  
+
   criteriaList.innerHTML = '';
   outcomesList.innerHTML = '';
-  
+
   criteria.forEach(c => addCriterionItem('success-criteria-list', c));
   outcomes.forEach(o => addCriterionItem('testing-outcomes-list', o));
 }
