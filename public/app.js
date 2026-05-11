@@ -1008,31 +1008,23 @@ document.getElementById('continue-to-generate').addEventListener('click', () => 
     return;
   }
   
+  // Build architecture object from selected files and naming convention
+  const clientPrefix = (session.extraction?.clientName || 'client')
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .substring(0, 3);
+  
+  session.architecture = {
+    filePrefix: clientPrefix,
+    fileNamingConvention: session.namingConvention || '{component}-v{version}',
+    recommendation: 'modular', // Could parse from architectureAnalysis if needed
+    promptCount: session.selectedFiles.length
+  };
+  
   setStage(7);
   startGeneration();
 });
-
-function startGeneration() {
-  // Build the prompt queue from the user's selected files (selectedFiles is an array of ID strings)
-  session.promptQueue = session.selectedFiles.map((fileId) => ({
-    id: fileId,
-    name: applyNamingConvention(session.namingConvention, {
-      component: fileId,
-      version: '1.0',
-      project: session.architecture?.filePrefix || 'project',
-      date: new Date().toISOString().slice(0, 10)
-    })
-  }));
-
-  // Reset state for a fresh generation run
-  currentPromptIndex = 0;
-  session.generatedPrompts = [];
-  streamAccumulator = '';
-
-  // Navigate to Stage 7 and start generating the first prompt
-  setStage(7);
-  generateCurrentPrompt();
-}
 
 // ─── STAGE 7: GENERATE ────────────────────────────────────────────────────
 
@@ -1040,7 +1032,7 @@ function buildPromptMeta(file, index) {
   const isCopilot = file.type === 'Copilot Instructions';
   return {
     promptType: isCopilot ? 'copilot-instructions' : 'azure-prompt',
-    promptName: isCopilot ? null : file.name.replace(`${session.architecture?.filePrefix || ''}-`, '').replace('-v1.0.md', ''),
+    promptName: isCopilot ? null : file.name.replace(`${session.architecture.filePrefix}-`, '').replace('-v1.0.md', ''),
     filename: file.name,
     description: isCopilot
       ? 'Copilot Studio routing and orchestration layer'
