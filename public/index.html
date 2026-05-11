@@ -86,6 +86,10 @@
 
       <!-- TOP PROGRESS BAR -->
       <div class="top-progress">
+        <div class="top-progress-header">
+          <span class="progress-label">Progress</span>
+          <span class="progress-count" id="progress-count">0/8 stages complete</span>
+        </div>
         <div class="top-progress-track">
           <div class="top-progress-fill" id="top-progress-fill"></div>
         </div>
@@ -207,8 +211,18 @@
       <section class="stage-panel" id="stage-4">
         <div class="panel-header">
           <div class="panel-stage-label">Stage 04</div>
-          <h1 class="panel-title">Scoping Document</h1>
-          <p class="panel-subtitle">Review and approve the scoping document. This is the sign-off gate before any generation.</p>
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div>
+              <h1 class="panel-title">Scoping Document</h1>
+              <p class="panel-subtitle">Review and approve the scoping document. This is the sign-off gate before any generation.</p>
+            </div>
+            <button class="btn-print" id="print-scope-btn" style="display:none">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M4 5V2h8v3M4 11H2V7h12v4h-2M4 11v3h8v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Print Page
+            </button>
+          </div>
         </div>
 
         <div class="panel-body">
@@ -302,8 +316,18 @@
       <section class="stage-panel" id="stage-6">
         <div class="panel-header">
           <div class="panel-stage-label">Stage 06</div>
-          <h1 class="panel-title">Architecture</h1>
-          <p class="panel-subtitle">Review the architectural approach and select which files to generate.</p>
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div>
+              <h1 class="panel-title">Architecture</h1>
+              <p class="panel-subtitle">Review the architectural approach and select which files to generate.</p>
+            </div>
+            <button class="btn-print" id="print-architecture-btn" style="display:none">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M4 5V2h8v3M4 11H2V7h12v4h-2M4 11v3h8v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Print Page
+            </button>
+          </div>
         </div>
 
         <div class="panel-body">
@@ -444,6 +468,10 @@
         <div class="panel-footer">
           <div class="action-row">
             <button class="btn-secondary" id="new-session-btn">New Session</button>
+            <button class="btn-secondary" id="export-handoff-btn">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M3 11v2a1 1 0 001 1h8a1 1 0 001-1v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Export to Delivery Framework
+            </button>
             <button class="btn-download" id="download-btn">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 10l3 3 3-3M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
               Download Package (.zip)

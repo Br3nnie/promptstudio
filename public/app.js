@@ -14,7 +14,8 @@ const session = {
   namingConvention: '{component}-v{version}',  // NEW: file naming pattern
   generatedPrompts: [],
   trackerHtml: '',
-  promptQueue: []
+  promptQueue: [],
+  stagesCompleted: {}             // NEW: Track which stages are complete
 };
 
 let currentStage = 1;
@@ -97,6 +98,25 @@ function setStage(n) {
 function markNavDone(n) {
   const el = document.getElementById(`nav-status-${n}`);
   if (el) el.textContent = '';
+}
+
+function markStageComplete(n) {
+  session.stagesCompleted[n] = true;
+  const el = document.getElementById(`nav-status-${n}`);
+  if (el) el.textContent = '✓';
+  updateCompletenessBar();
+}
+
+function updateCompletenessBar() {
+  const completed = Object.keys(session.stagesCompleted).length;
+  const total = 8;
+  const percentage = (completed / total) * 100;
+  
+  const countEl = document.getElementById('progress-count');
+  if (countEl) countEl.textContent = `${completed}/${total} stages complete`;
+  
+  const fillEl = document.getElementById('top-progress-fill');
+  if (fillEl) fillEl.style.width = `${percentage}%`;
 }
 
 function showError(stageNum, msg) {
@@ -374,6 +394,22 @@ function applyNamingConvention(pattern, vars) {
     .replace(/{project}/g, vars.project);
 }
 
+// ─── NAVIGATION HANDLERS ──────────────────────────────────────────────────
+
+// Make sidebar navigation clickable
+document.querySelectorAll('.stage-nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    const targetStage = parseInt(item.dataset.stage);
+    const stageCompleted = session.stagesCompleted[targetStage] || targetStage === 1;
+    
+    if (stageCompleted) {
+      setStage(targetStage);
+    } else {
+      showToast('Complete previous stages first');
+    }
+  });
+});
+
 
 // ─── STAGE 1: INPUT ────────────────────────────────────────────────────────
 
@@ -399,6 +435,7 @@ document.getElementById('analyse-btn').addEventListener('click', async () => {
   try {
     const result = await api('/api/extract', { input });
     session.extraction = result.data;
+    markStageComplete(1);
     setStage(2);
     renderExtraction();
   } catch (err) {
@@ -566,6 +603,7 @@ document.getElementById('confirm-extraction-btn').addEventListener('click', asyn
     
     const result = await api('/api/questions', { extraction: session.extraction });
     session.questions = result.questions;
+    markStageComplete(2);
     setStage(3);
     renderQuestions();
   } catch (err) {
@@ -659,6 +697,7 @@ document.getElementById('submit-questions-btn').addEventListener('click', async 
       });
     }
     
+    markStageComplete(3);
     setStage(4);
     generateScope();
   } catch (err) {
@@ -695,6 +734,10 @@ async function generateScope() {
         session.scopingDoc = streamAccumulator;
         document.getElementById('scope-editor').value = streamAccumulator;
         approveBtn.disabled = false;
+        
+        // Show print button
+        const printBtn = document.getElementById('print-scope-btn');
+        if (printBtn) printBtn.style.display = 'flex';
       },
       (err) => {
         preview.innerHTML = `<div class="error-msg">Generation failed: ${esc(err.message)}</div>`;
@@ -731,6 +774,7 @@ function switchScopeTab(tab) {
 }
 
 document.getElementById('approve-scope-btn').addEventListener('click', () => {
+  markStageComplete(4);
   setStage(5);
   generateSuccessCriteria();
 });
@@ -882,6 +926,7 @@ document.getElementById('continue-to-architecture').addEventListener('click', ()
     return;
   }
   
+  markStageComplete(5);
   setStage(6);
   generateArchitectureAnalysis();
 });
@@ -953,6 +998,15 @@ function parseFileStructure(markdown) {
     }
   });
   
+  // Create card-based architecture visual
+  const architectureHtml = createArchitectureCards(files);
+  const visualContainer = document.getElementById('architecture-recommendation');
+  if (visualContainer) visualContainer.innerHTML = architectureHtml;
+  
+  // Show print button
+  const printBtn = document.getElementById('print-architecture-btn');
+  if (printBtn) printBtn.style.display = 'flex';
+  
   // Render file selection list
   const fileList = document.getElementById('file-selection-list');
   fileList.innerHTML = '';
@@ -978,6 +1032,114 @@ function parseFileStructure(markdown) {
   });
   
   updateFileSelectionSummary();
+}
+
+function createArchitectureCards(files) {
+  // Extract token estimates from the markdown
+  const tokenEstimates = extractTokenEstimates(session.architectureAnalysis);
+  
+  // Separate files into categories
+  const orchestration = files.find(f => f.name.toLowerCase().includes('copilot') || f.name.toLowerCase().includes('instruction'));
+  const prompts = files.filter(f => !f.name.toLowerCase().includes('copilot') && !f.name.toLowerCase().includes('template') && !f.name.toLowerCase().includes('instruction'));
+  const reference = files.find(f => f.name.toLowerCase().includes('template'));
+  
+  let html = '<div class="arch-visual">';
+  
+  // Orchestration layer
+  if (orchestration) {
+    const tokens = tokenEstimates[orchestration.name] || '~2,500';
+    html += `
+      <div class="arch-card">
+        <div class="arch-header">
+          <span>${orchestration.name}</span>
+          <span class="arch-badge orchestration">Orchestration</span>
+        </div>
+        <div class="arch-desc">Router and orchestration layer. Receives user requests, identifies the required operation, and calls the appropriate Azure prompt.</div>
+        <div class="arch-meta">
+          <span>${tokens} tokens</span>
+          <span>Character limit: 8,000</span>
+        </div>
+      </div>
+    `;
+  }
+  
+  html += '<div class="arch-connector">↓ Routes to Azure Prompts</div>';
+  html += '<div class="arch-grid">';
+  
+  // Azure Prompts
+  prompts.forEach(file => {
+    const tokens = tokenEstimates[file.name] || '';
+    const desc = getFileDescription(file.name);
+    html += `
+      <div class="arch-card">
+        <div class="arch-header">
+          <span>${file.name}</span>
+          <span class="arch-badge prompt">Prompt</span>
+        </div>
+        <div class="arch-desc">${desc}</div>
+        ${tokens ? `<div class="arch-meta"><span>${tokens} tokens</span></div>` : ''}
+      </div>
+    `;
+  });
+  
+  html += '</div>';
+  
+  // Reference template
+  if (reference) {
+    const tokens = tokenEstimates[reference.name] || '~3,200';
+    html += `
+      <div class="arch-connector">↓ References shared template</div>
+      <div class="arch-card">
+        <div class="arch-header">
+          <span>${reference.name}</span>
+          <span class="arch-badge reference">Reference</span>
+        </div>
+        <div class="arch-desc">Centralized template structure referenced by all prompts. Defines core sections and appendices with exact headings.</div>
+        <div class="arch-meta">
+          <span>${tokens} tokens</span>
+          <span>Shared across all prompts</span>
+        </div>
+      </div>
+    `;
+  }
+  
+  html += '</div>';
+  return html;
+}
+
+function extractTokenEstimates(markdown) {
+  const estimates = {};
+  const lines = markdown.split('\n');
+  let currentFile = null;
+  
+  lines.forEach(line => {
+    // Match file names
+    const fileMatch = line.match(/^-\s+(.+?)(?:\s*\(|:|\s*$)/);
+    if (fileMatch) {
+      currentFile = fileMatch[1].trim();
+    }
+    
+    // Match token estimates
+    const tokenMatch = line.match(/(\d+[,\d]*)\s*tokens?/i);
+    if (tokenMatch && currentFile) {
+      estimates[currentFile] = `~${tokenMatch[1]}`;
+    }
+  });
+  
+  return estimates;
+}
+
+function getFileDescription(fileName) {
+  const descriptions = {
+    'generate-sections': 'Generates IC paper sections with two-pass citation approach.',
+    'ddq-assessment': 'Analyzes DDQ responses and flags risks or gaps.',
+    'source-analysis': 'Extracts structured data from SharePoint documents.',
+    'quality-review': 'Validates output against quality standards.',
+    'comparative-analysis': 'Compares current submission against benchmarks.'
+  };
+  
+  const key = Object.keys(descriptions).find(k => fileName.toLowerCase().includes(k));
+  return descriptions[key] || 'Specialized prompt for this workflow.';
 }
 
 function toFileId(name) {
@@ -1022,8 +1184,87 @@ document.getElementById('continue-to-generate').addEventListener('click', () => 
     promptCount: session.selectedFiles.length
   };
   
+  markStageComplete(6);
   setStage(7);
   startGeneration();
+});
+
+// ─── PRINT HANDLERS ────────────────────────────────────────────────────────
+
+// Architecture print button
+document.getElementById('print-architecture-btn')?.addEventListener('click', () => {
+  const printContent = `
+    <html>
+    <head>
+      <title>Architecture - ${session.extraction?.projectName || 'Project'}</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 40px; line-height: 1.6; }
+        h1 { font-size: 24px; margin-bottom: 24px; }
+        .arch-card { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 16px; page-break-inside: avoid; }
+        .arch-header { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .arch-badge { font-size: 11px; padding: 4px 8px; border-radius: 4px; margin-left: 8px; }
+        .arch-desc { margin-bottom: 12px; }
+        .arch-meta { font-size: 13px; color: #666; }
+        .arch-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .arch-connector { text-align: center; margin: 16px 0; color: #666; }
+        @media print { .no-print { display: none; } }
+      </style>
+    </head>
+    <body>
+      <h1>Architecture Recommendation</h1>
+      ${document.getElementById('architecture-recommendation')?.innerHTML || ''}
+    </body>
+    </html>
+  `;
+  
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(printContent);
+  printWindow.document.close();
+  printWindow.print();
+});
+
+// Scope print button
+document.getElementById('print-scope-btn')?.addEventListener('click', () => {
+  const printContent = `
+    <html>
+    <head>
+      <title>Scoping Document - ${session.extraction?.projectName || 'Project'}</title>
+      <style>
+        @page { margin: 2cm; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          line-height: 1.6;
+          color: #1a1917;
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+        h1 { font-size: 24px; margin-top: 32px; margin-bottom: 16px; border-bottom: 2px solid #e2e0da; padding-bottom: 8px; }
+        h2 { font-size: 20px; margin-top: 24px; margin-bottom: 12px; color: #1a3a5c; }
+        h3 { font-size: 16px; margin-top: 16px; margin-bottom: 8px; }
+        table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+        th, td { border: 1px solid #e2e0da; padding: 8px 12px; text-align: left; }
+        th { background: #f7f6f3; font-weight: 600; }
+        ul, ol { margin: 12px 0; padding-left: 24px; }
+        li { margin: 6px 0; }
+        p { margin: 12px 0; }
+        strong { font-weight: 600; }
+        code { background: #f7f6f3; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 13px; }
+        pre { background: #f7f6f3; padding: 16px; border-radius: 6px; overflow-x: auto; }
+        hr { border: none; border-top: 1px solid #e2e0da; margin: 24px 0; }
+        @media print { .no-print { display: none; } }
+      </style>
+    </head>
+    <body>
+      ${document.getElementById('scope-display')?.innerHTML || ''}
+    </body>
+    </html>
+  `;
+  
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(printContent);
+  printWindow.document.close();
+  printWindow.print();
 });
 
 // ─── STAGE 7: GENERATE ────────────────────────────────────────────────────
@@ -1181,6 +1422,7 @@ document.getElementById('approve-prompt-btn').addEventListener('click', async ()
   if (currentPromptIndex < session.promptQueue.length) {
     generateCurrentPrompt();
   } else {
+    markStageComplete(7);
     setStage(8);
     buildPackageStage();
   }
@@ -1272,6 +1514,101 @@ document.getElementById('download-btn').addEventListener('click', async () => {
     alert(`Download failed: ${err.message}`);
   } finally {
     clearLoading(btn);
+  }
+});
+
+// ─── STAGE 8: EXPORT TO DELIVERY FRAMEWORK ───────────────────────────────
+
+function buildDeliveryHandoff() {
+  const extraction = session.extraction || {};
+  const prefix = extraction.clientName || 'Unknown';
+
+  // ── Stakeholders ─────────────────────────────────────────────────────────
+  const rawStakeholders = extraction.stakeholders || [];
+  const stakeholders = rawStakeholders.map(s =>
+    typeof s === 'string' ? { name: s, role: '' } : { name: s.name || s, role: s.role || '' }
+  );
+
+  // ── Requirements list from scoping doc sections ───────────────────────────
+  // We derive structured requirements from the ranked use cases plus clarify answers.
+  const useCases = session.rankedUseCases.length > 0
+    ? session.rankedUseCases.map(uc => uc.text || uc)
+    : (extraction.useCases || []);
+
+  const requirementsList = useCases.map((uc, i) => ({
+    id: `REQ-${String(i + 1).padStart(3, '0')}`,
+    description: uc.text || uc,
+    priority: uc.priority || uc.moscow || uc.priorityLabel ||
+              (i === 0 ? 'High' : i < 3 ? 'Medium' : 'Low'),
+    acceptanceCriterion: session.successCriteria[i] || ''
+  }));
+
+  // ── Agent scope from scoping doc ──────────────────────────────────────────
+  // Parse in-scope / out-of-scope lines from the markdown scoping document.
+  const inScope = [];
+  const outOfScope = [];
+  if (session.scopingDoc) {
+    const lines = session.scopingDoc.split('\n');
+    let mode = null;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (/^#{1,6}\s.*out.of.scope/i.test(trimmed) || /out.of.scope/i.test(trimmed)) { mode = 'out'; continue; }
+      if (/^#{1,6}\s.*in.scope/i.test(trimmed) || /\bin.scope\b/i.test(trimmed)) { mode = 'in'; continue; }
+      if (/^#{1,6}\s/.test(trimmed)) { mode = null; continue; }
+      const bullet = trimmed.match(/^[-*]\s+(.+)$/) || trimmed.match(/^\d+\.\s+(.+)$/);
+      if (bullet) {
+        if (mode === 'in') inScope.push(bullet[1]);
+        if (mode === 'out') outOfScope.push(bullet[1]);
+      }
+    }
+  }
+
+  // ── Agent spec from Stage 7 generated prompts ─────────────────────────────
+  const proposedAgentSpec = {
+    architecture: session.architectureAnalysis
+      ? session.architectureAnalysis.substring(0, 800) + (session.architectureAnalysis.length > 800 ? '…' : '')
+      : '',
+    files: session.generatedPrompts.map(p => ({
+      filename: p.filename,
+      type: p.type,
+      description: p.description
+    }))
+  };
+
+  return {
+    exportedAt: new Date().toISOString(),
+    exportVersion: '1.0',
+    projectName: extraction.projectName || extraction.clientName || 'Unnamed Project',
+    clientName: extraction.clientName || extraction.projectName || 'Unknown',
+    stakeholders,
+    requirementsList,
+    agentScope: {
+      inScope,
+      outOfScope
+    },
+    successCriteria: session.successCriteria,
+    proposedAgentSpec
+  };
+}
+
+document.getElementById('export-handoff-btn').addEventListener('click', () => {
+  const btn = document.getElementById('export-handoff-btn');
+  try {
+    const handoff = buildDeliveryHandoff();
+    const json = JSON.stringify(handoff, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const prefix = (handoff.clientName || 'client').toLowerCase().replace(/\s+/g, '-');
+    a.href = url;
+    a.download = `${prefix}-delivery-handoff.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Handoff file exported — ready for Delivery Framework');
+  } catch (err) {
+    showToast(`Export failed: ${err.message}`, 'error');
   }
 });
 
