@@ -775,7 +775,7 @@ OUTPUT FORMAT (markdown):
       }
     }
 
-    res.write('data: [DONE]\n\n');
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
   } catch (error) {
     console.error('Error generating success criteria:', error);
@@ -850,7 +850,7 @@ OUTPUT FORMAT (markdown with clear sections using ## headings)`;
       }
     }
 
-    res.write('data: [DONE]\n\n');
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
   } catch (error) {
     console.error('Error generating architecture:', error);
