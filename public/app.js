@@ -1013,11 +1013,11 @@ document.getElementById('continue-to-generate').addEventListener('click', () => 
 });
 
 function startGeneration() {
-  // Build the prompt queue from the user's selected files
-  session.promptQueue = session.selectedFiles.map((file, i) => ({
-    ...file,
+  // Build the prompt queue from the user's selected files (selectedFiles is an array of ID strings)
+  session.promptQueue = session.selectedFiles.map((fileId) => ({
+    id: fileId,
     name: applyNamingConvention(session.namingConvention, {
-      component: file.id,
+      component: fileId,
       version: '1.0',
       project: session.architecture?.filePrefix || 'project',
       date: new Date().toISOString().slice(0, 10)
@@ -1040,7 +1040,7 @@ function buildPromptMeta(file, index) {
   const isCopilot = file.type === 'Copilot Instructions';
   return {
     promptType: isCopilot ? 'copilot-instructions' : 'azure-prompt',
-    promptName: isCopilot ? null : file.name.replace(`${session.architecture.filePrefix}-`, '').replace('-v1.0.md', ''),
+    promptName: isCopilot ? null : file.name.replace(`${session.architecture?.filePrefix || ''}-`, '').replace('-v1.0.md', ''),
     filename: file.name,
     description: isCopilot
       ? 'Copilot Studio routing and orchestration layer'
