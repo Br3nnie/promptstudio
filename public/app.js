@@ -1012,6 +1012,28 @@ document.getElementById('continue-to-generate').addEventListener('click', () => 
   startGeneration();
 });
 
+function startGeneration() {
+  // Build the prompt queue from the user's selected files
+  session.promptQueue = session.selectedFiles.map((file, i) => ({
+    ...file,
+    name: applyNamingConvention(session.namingConvention, {
+      component: file.id,
+      version: '1.0',
+      project: session.architecture?.filePrefix || 'project',
+      date: new Date().toISOString().slice(0, 10)
+    })
+  }));
+
+  // Reset state for a fresh generation run
+  currentPromptIndex = 0;
+  session.generatedPrompts = [];
+  streamAccumulator = '';
+
+  // Navigate to Stage 7 and start generating the first prompt
+  setStage(7);
+  generateCurrentPrompt();
+}
+
 // ─── STAGE 7: GENERATE ────────────────────────────────────────────────────
 
 function buildPromptMeta(file, index) {
