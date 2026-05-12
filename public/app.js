@@ -451,111 +451,179 @@ function renderExtraction() {
   const { extraction } = session;
   const container = document.getElementById('extraction-display');
 
-  const useCases = extraction.useCases || [];
-  const stakeholders = extraction.stakeholders || [];
-  const constraints = extraction.constraints || [];
-  const documentTypes = extraction.documentTypes || [];
+  const useCases      = extraction.useCases      || [];
+  const stakeholders  = extraction.stakeholders  || [];
+  const constraints   = extraction.constraints   || [];
+  const ambiguities   = extraction.ambiguities   || [];
+  const documentTypes = extraction.documentTypes || extraction.inputDocumentTypes || [];
+  const outputPrefs   = extraction.outputPreferences || extraction.outputFormats || [];
+  const complexity    = extraction.complexity    || '';
+  const archHint      = extraction.architectureHint || extraction.architectureRecommendation || '';
 
-  let html = `
-    <div style="margin-bottom:24px">
-      <div style="font-size:13.5px;color:var(--text-muted);margin-bottom:4px">Client / Project</div>
-      <div style="font-size:16px;font-weight:600;color:var(--accent)">${esc(extraction.clientName || 'Unknown')}${extraction.projectName ? ` — <span style="font-weight:400">${esc(extraction.projectName)}</span>` : ''}</div>
-    </div>
-    
-    <div style="margin-bottom:16px">
-      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px">Use Cases (${useCases.length})</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-  `;
-  
+  // ── hidden edit-tracking form (never visible, always in DOM for confirm handler) ──
+  let editForm = `<div id="extraction-edit-form" style="display:none">`;
+
   useCases.forEach((uc, i) => {
     const id = `use-case-${i}`;
-    html += `
-      <div class="extraction-edit-card" data-id="${id}">
-        <input type="checkbox" checked data-type="useCase" data-id="${id}">
-        <textarea data-id="${id}" data-original="${esc(uc, true)}" data-type="useCase">${esc(uc)}</textarea>
-      </div>
-    `;
+    editForm += `<div class="extraction-edit-card" data-id="${id}">
+      <input type="checkbox" checked data-type="useCase" data-id="${id}">
+      <textarea data-id="${id}" data-original="${esc(uc, true)}" data-type="useCase">${esc(uc)}</textarea>
+    </div>`;
   });
-  
-  html += `
-      </div>
-    </div>
-    
-    <div style="margin-bottom:16px">
-      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px">Stakeholders (${stakeholders.length})</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-  `;
-  
   stakeholders.forEach((s, i) => {
     const id = `stakeholder-${i}`;
     const text = typeof s === 'string' ? s : `${s.name}${s.role ? ' · ' + s.role : ''}`;
-    html += `
-      <div class="extraction-edit-card" data-id="${id}">
-        <input type="checkbox" checked data-type="stakeholder" data-id="${id}">
-        <textarea data-id="${id}" data-original="${esc(text, true)}" data-type="stakeholder">${esc(text)}</textarea>
-      </div>
-    `;
+    editForm += `<div class="extraction-edit-card" data-id="${id}">
+      <input type="checkbox" checked data-type="stakeholder" data-id="${id}">
+      <textarea data-id="${id}" data-original="${esc(text, true)}" data-type="stakeholder">${esc(text)}</textarea>
+    </div>`;
   });
-  
-  html += `
-      </div>
-    </div>
-    
-    <div style="margin-bottom:16px">
-      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px">Constraints (${constraints.length})</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-  `;
-  
   constraints.forEach((c, i) => {
     const id = `constraint-${i}`;
-    html += `
-      <div class="extraction-edit-card" data-id="${id}">
-        <input type="checkbox" checked data-type="constraint" data-id="${id}">
-        <textarea data-id="${id}" data-original="${esc(c, true)}" data-type="constraint">${esc(c)}</textarea>
-      </div>
-    `;
+    editForm += `<div class="extraction-edit-card" data-id="${id}">
+      <input type="checkbox" checked data-type="constraint" data-id="${id}">
+      <textarea data-id="${id}" data-original="${esc(c, true)}" data-type="constraint">${esc(c)}</textarea>
+    </div>`;
   });
-  
-  html += `
-      </div>
+  editForm += `</div>`;
+
+  // ── visual card layout ────────────────────────────────────────────────────
+  const pills = (arr, cls = '') => arr.map(t =>
+    `<span class="ex-pill${cls ? ' ' + cls : ''}">${esc(typeof t === 'string' ? t : t.text || t)}</span>`
+  ).join('');
+
+  const stakeholderRows = stakeholders.map(s => {
+    const name = typeof s === 'string' ? s : (s.name || s);
+    const role = typeof s === 'object' ? (s.role || '') : '';
+    return `<div class="ex-stakeholder-row">
+      <span class="ex-stakeholder-name">${esc(name)}</span>
+      ${role ? `<span class="ex-stakeholder-role">· ${esc(role)}</span>` : ''}
+    </div>`;
+  }).join('');
+
+  const complexityClass = complexity
+    ? ({ high: 'ex-badge-red', medium: 'ex-badge-amber', low: 'ex-badge-green' }[complexity.toLowerCase()] || 'ex-badge-amber')
+    : '';
+
+  let visual = `
+    <div class="ex-client-row">
+      <span class="ex-client-label">Client / Project</span>
+      <span class="ex-client-name">${esc(extraction.clientName || 'Unknown')}${extraction.projectName ? ` <span class="ex-project-name">— ${esc(extraction.projectName)}</span>` : ''}</span>
     </div>
-  `;
-  
-  container.innerHTML = html;
-  
-  // Attach event listeners for edit tracking
+
+    <div class="ex-grid-top">
+      <div class="ex-card">
+        <div class="ex-card-label">Use Cases (${useCases.length})</div>
+        <div class="ex-pills">${pills(useCases)}</div>
+      </div>
+      <div class="ex-card">
+        <div class="ex-card-label">Stakeholders</div>
+        <div class="ex-stakeholders">${stakeholderRows || '<span class="ex-empty">None detected</span>'}</div>
+      </div>
+    </div>`;
+
+  if (documentTypes.length || outputPrefs.length) {
+    visual += `<div class="ex-grid-top">`;
+    if (documentTypes.length) {
+      visual += `<div class="ex-card">
+        <div class="ex-card-label">Input Document Types</div>
+        <div class="ex-pills">${pills(documentTypes)}</div>
+      </div>`;
+    }
+    if (outputPrefs.length) {
+      visual += `<div class="ex-card">
+        <div class="ex-card-label">Output Preferences</div>
+        <div class="ex-pills">${pills(outputPrefs)}</div>
+      </div>`;
+    }
+    visual += `</div>`;
+  }
+
+  if (constraints.length) {
+    visual += `<div class="ex-card ex-card-full">
+      <div class="ex-card-label">Constraints Detected</div>
+      <div class="ex-pills">${pills(constraints, 'ex-pill-amber')}</div>
+    </div>`;
+  }
+
+  if (ambiguities.length) {
+    visual += `<div class="ex-card ex-card-full">
+      <div class="ex-card-label">Ambiguities (To Clarify)</div>
+      <div class="ex-pills">${pills(ambiguities, 'ex-pill-amber')}</div>
+    </div>`;
+  }
+
+  if (complexity || archHint) {
+    visual += `<div class="ex-grid-bottom">`;
+    if (complexity) {
+      visual += `<div class="ex-card">
+        <div class="ex-card-label">Complexity</div>
+        <span class="ex-badge ${complexityClass}">${esc(complexity.charAt(0).toUpperCase() + complexity.slice(1))}</span>
+      </div>`;
+    }
+    if (archHint) {
+      visual += `<div class="ex-card">
+        <div class="ex-card-label">Architecture Hint</div>
+        <span class="ex-badge ex-badge-neutral">${esc(archHint)}</span>
+      </div>`;
+    }
+    visual += `</div>`;
+  }
+
+  container.innerHTML = visual + editForm;
+
+  // ── attach edit-tracking listeners to the hidden form ────────────────────
   container.querySelectorAll('textarea').forEach(textarea => {
     let lastValue = textarea.value;
-    
     textarea.addEventListener('blur', () => {
       const currentValue = textarea.value;
       const originalValue = textarea.dataset.original;
-      
       if (currentValue !== lastValue && currentValue !== originalValue) {
-        showEditReasonDialog(
-          textarea.dataset.id,
-          textarea.dataset.type,
-          'edited',
-          originalValue
-        );
+        showEditReasonDialog(textarea.dataset.id, textarea.dataset.type, 'edited', originalValue);
         lastValue = currentValue;
       }
     });
   });
-  
+
   container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
     checkbox.addEventListener('change', (e) => {
       if (!e.target.checked) {
         const textarea = container.querySelector(`textarea[data-id="${e.target.dataset.id}"]`);
-        showEditReasonDialog(
-          e.target.dataset.id,
-          e.target.dataset.type,
-          'deselected',
-          textarea.dataset.original
-        );
+        showEditReasonDialog(e.target.dataset.id, e.target.dataset.type, 'deselected', textarea.dataset.original);
       }
     });
   });
+
+  // Inject Stage 2 visual styles if not already present
+  if (!document.querySelector('style#ex-styles')) {
+    const s = document.createElement('style');
+    s.id = 'ex-styles';
+    s.textContent = `
+      .ex-client-row { margin-bottom: 20px; }
+      .ex-client-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; display: block; margin-bottom: 4px; }
+      .ex-client-name { font-size: 17px; font-weight: 700; color: var(--text); }
+      .ex-project-name { font-weight: 400; color: var(--text-muted); }
+      .ex-grid-top { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+      .ex-grid-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+      .ex-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+      .ex-card-full { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 16px; }
+      .ex-card-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin-bottom: 12px; }
+      .ex-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+      .ex-pill { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 13px; color: var(--text); line-height: 1.4; }
+      .ex-pill-amber { background: #fdf8ec; border-color: #e8d5a0; color: #7a5f1a; }
+      .ex-stakeholders { display: flex; flex-direction: column; gap: 8px; }
+      .ex-stakeholder-row { display: flex; align-items: baseline; gap: 6px; }
+      .ex-stakeholder-name { font-size: 14px; font-weight: 600; color: var(--text); }
+      .ex-stakeholder-role { font-size: 13px; color: var(--text-muted); }
+      .ex-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+      .ex-badge-red    { background: #fdecea; color: #b91c1c; border: 1px solid #fca5a5; }
+      .ex-badge-amber  { background: #fdf8ec; color: #92400e; border: 1px solid #fcd34d; }
+      .ex-badge-green  { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
+      .ex-badge-neutral{ background: var(--surface-subtle); color: var(--text); border: 1px solid var(--border); }
+      .ex-empty { font-size: 13px; color: var(--text-muted); font-style: italic; }
+    `;
+    document.head.appendChild(s);
+  }
 }
 
 document.getElementById('confirm-extraction-btn').addEventListener('click', async () => {
@@ -1030,7 +1098,10 @@ function parseFileStructure(markdown) {
   fileList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.addEventListener('change', updateFileSelectionSummary);
   });
-  
+
+  // Save full file objects so promptQueue can be built later
+  session.architectureFiles = files;
+
   updateFileSelectionSummary();
 }
 
@@ -1183,10 +1254,22 @@ document.getElementById('continue-to-generate').addEventListener('click', () => 
     recommendation: 'modular', // Could parse from architectureAnalysis if needed
     promptCount: session.selectedFiles.length
   };
-  
+
+  // Build the prompt queue from selected file IDs, resolving back to full objects
+  session.promptQueue = (session.architectureFiles || [])
+    .filter(f => session.selectedFiles.includes(f.id))
+    .map(f => ({
+      ...f,
+      type: (f.name.toLowerCase().includes('copilot') || f.name.toLowerCase().includes('instruction'))
+        ? 'Copilot Instructions'
+        : 'Azure Prompt'
+    }));
+
+  currentPromptIndex = 0;
+
   markStageComplete(6);
   setStage(7);
-  startGeneration();
+  generateCurrentPrompt();
 });
 
 // ─── PRINT HANDLERS ────────────────────────────────────────────────────────
@@ -1535,11 +1618,10 @@ function buildDeliveryHandoff() {
     ? session.rankedUseCases.map(uc => uc.text || uc)
     : (extraction.useCases || []);
 
-  const requirementsList = useCases.map((uc, i) => ({
+  const requirementsList = useCases.map((text, i) => ({
     id: `REQ-${String(i + 1).padStart(3, '0')}`,
-    description: uc.text || uc,
-    priority: uc.priority || uc.moscow || uc.priorityLabel ||
-              (i === 0 ? 'High' : i < 3 ? 'Medium' : 'Low'),
+    description: text,
+    priority: i === 0 ? 'High' : i < 3 ? 'Medium' : 'Low',
     acceptanceCriterion: session.successCriteria[i] || ''
   }));
 
@@ -1579,7 +1661,7 @@ function buildDeliveryHandoff() {
     exportedAt: new Date().toISOString(),
     exportVersion: '1.0',
     projectName: extraction.projectName || extraction.clientName || 'Unnamed Project',
-    clientName: extraction.clientName || extraction.projectName || 'Unknown',
+    clientName: prefix,
     stakeholders,
     requirementsList,
     agentScope: {
@@ -1912,7 +1994,8 @@ function resetSession() {
     namingConvention: '{component}-v{version}',
     generatedPrompts: [],
     trackerHtml: '',
-    promptQueue: []
+    promptQueue: [],
+    architectureFiles: []
   });
   currentPromptIndex = 0;
   streamAccumulator = '';
